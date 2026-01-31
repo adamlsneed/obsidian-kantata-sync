@@ -1,0 +1,17 @@
+{
+  "name": "obsidian-kantata-sync",
+  "version": "0.5.0",
+  "description": "Sync Obsidian notes to Kantata Activity Feeds",
+  "main": "main.js",
+  "scripts": {
+    "dev": "esbuild src/main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --watch",
+    "build": "esbuild src/main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --minify",
+    "deploy": "npm run build && cp main.js manifest.json \"$HOME/Library/CloudStorage/OneDrive-NetwrixCorporation/Netwrix Documents/Obsidian/Netwrix/Customer Notes/.obsidian/plugins/kantata-sync/\""
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "latest",
+    "typescript": "^5.0.0"
+  }
+}

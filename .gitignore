@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build output (regenerated from source)
+main.js
+
+# OS files
+.DS_Store
+
+# Editor
+.vscode/
+*.swp
