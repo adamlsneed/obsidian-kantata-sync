@@ -1306,15 +1306,38 @@ ${noteContent}`;
         userId: string,
         data: { date: string; hours: number; category: string; notes: string }
     ): Promise<string> {
-        const response = await this.apiRequest('/time_entries.json', 'POST', {
-            time_entry: {
-                workspace_id: workspaceId,
-                user_id: userId,
-                date_performed: data.date,
-                time_in_minutes: Math.round(data.hours * 60),
-                notes: data.notes,
-                category: data.category
+        // Kantata requires story_id (task) for time entries
+        // Try to find a default story, or create time entry with just workspace
+        let storyId: string | null = null;
+        
+        try {
+            // Look for stories (tasks) in this workspace
+            const storiesResponse = await this.apiRequest(`/stories.json?workspace_id=${workspaceId}&per_page=10`);
+            const stories = Object.values(storiesResponse.stories || {}) as any[];
+            if (stories.length > 0) {
+                // Use first available story
+                storyId = stories[0].id;
+                console.log(`[KantataSync] Using story_id: ${storyId} for time entry`);
             }
+        } catch (e) {
+            console.warn('[KantataSync] Could not fetch stories, trying without story_id');
+        }
+
+        const timeEntryData: any = {
+            workspace_id: workspaceId,
+            user_id: userId,
+            date_performed: data.date,
+            time_in_minutes: Math.round(data.hours * 60),
+            notes: `[${data.category}] ${data.notes}`,
+            billable: true
+        };
+        
+        if (storyId) {
+            timeEntryData.story_id = storyId;
+        }
+
+        const response = await this.apiRequest('/time_entries.json', 'POST', {
+            time_entry: timeEntryData
         });
         
         const entries = Object.values(response.time_entries || {}) as any[];
