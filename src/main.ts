@@ -1343,7 +1343,7 @@ TASKS (pick one): ${availableCategories.join(' | ')}
 RULES:
 - summary: What was done (1 line, start with verb, max 100 chars)
 - category: MUST match one task above exactly
-- hours: Estimate from work described (0.25 = 15min, 0.5 = 30min, 1 = 1hr)
+- hours: Use 15-min increments ONLY (0.25, 0.5, 0.75, 1, 1.25, 1.5, etc.)
 - notes: Key details for billing (2-3 sentences, professional)
 
 NOTE:
@@ -1361,10 +1361,14 @@ JSON:`;
         
         try {
             const parsed = JSON.parse(jsonStr);
+            // Round hours to nearest 15-minute increment (0.25)
+            const rawHours = Number(parsed.hours) || 1;
+            const roundedHours = Math.round(rawHours * 4) / 4;
+            
             return {
                 summary: String(parsed.summary || '').slice(0, 100),
                 category: parsed.category || availableCategories[0] || 'General',
-                hours: Number(parsed.hours) || 1,
+                hours: Math.max(0.25, roundedHours), // Minimum 15 minutes
                 notes: String(parsed.notes || '')
             };
         } catch (e) {
