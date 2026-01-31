@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
+import { App, FuzzySuggestModal, Menu, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
 
 // Folder suggester for autocomplete
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -293,10 +293,36 @@ export default class KantataSync extends Plugin {
         // Status bar
         this.statusBarItem = this.addStatusBarItem();
         this.statusBarItem.addClass('obsidianlink-status');
-        this.statusBarItem.onClickEvent(async () => {
-            await this.syncCurrentNote();
+        this.statusBarItem.onClickEvent(async (evt: MouseEvent) => {
+            // Show menu with options
+            const menu = new Menu();
+            
+            menu.addItem((item) => {
+                item.setTitle('📝 Sync Note to Kantata')
+                    .onClick(async () => {
+                        await this.syncCurrentNote();
+                    });
+            });
+            
+            menu.addItem((item) => {
+                item.setTitle('⏱️ Create Time Entry')
+                    .onClick(async () => {
+                        await this.createTimeEntryForCurrentNote();
+                    });
+            });
+            
+            menu.addSeparator();
+            
+            menu.addItem((item) => {
+                item.setTitle('🔗 Open in Kantata')
+                    .onClick(async () => {
+                        await this.openInKantata();
+                    });
+            });
+            
+            menu.showAtMouseEvent(evt);
         });
-        this.updateStatusBar('📝 Note Sync: ⚪ Ready', 'Click to sync note to Kantata');
+        this.updateStatusBar('Note ⚪ · Time ⚪', 'Click for options');
 
         // File event handlers
         this.registerEvent(this.app.workspace.on('file-open', async (file) => {
@@ -872,7 +898,7 @@ export default class KantataSync extends Plugin {
             
             // Time entry status
             const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
-            const timeStatusText = hasTimeEntry ? '⏱️✅' : '⏱️⚪';
+            const timeStatus = hasTimeEntry ? '✅' : '⚪';
 
             // Get workspace status if enabled
             let projectStatusText = '';
@@ -880,23 +906,34 @@ export default class KantataSync extends Plugin {
                 const cacheResult = this.findCacheEntry(file);
                 if (cacheResult?.entry.workspaceStatus) {
                     const statusEmoji = this.getStatusEmoji(cacheResult.entry.workspaceStatusColor || 'gray');
-                    projectStatusText = `  •  Project: ${statusEmoji} ${cacheResult.entry.workspaceStatus}`;
+                    projectStatusText = ` · ${statusEmoji} ${cacheResult.entry.workspaceStatus}`;
                 }
             }
 
+            let noteStatus: string;
+            let tooltip: string;
+            
             if (isSynced && syncedAt) {
                 const syncTime = new Date(syncedAt).getTime();
                 if (file.stat.mtime > syncTime + 2000) {
-                    // Pending changes - use 🔄 for "changes to sync"
-                    this.updateStatusBar(`📝🔄  ${timeStatusText}${projectStatusText}`, `Note: pending changes | Time: ${hasTimeEntry ? 'logged' : 'not logged'}`);
+                    noteStatus = '🔄';
+                    tooltip = 'Note has pending changes';
                 } else {
-                    this.updateStatusBar(`📝✅  ${timeStatusText}${projectStatusText}`, `Note: synced | Time: ${hasTimeEntry ? 'logged' : 'not logged'}`);
+                    noteStatus = '✅';
+                    tooltip = 'Note synced';
                 }
             } else {
-                this.updateStatusBar(`📝⚪  ${timeStatusText}${projectStatusText}`, `Note: not synced | Time: ${hasTimeEntry ? 'logged' : 'not logged'}`);
+                noteStatus = '⚪';
+                tooltip = 'Note not synced';
             }
+
+            const timeTooltip = hasTimeEntry ? 'Time logged' : 'No time entry - click to create';
+            this.updateStatusBar(
+                `Note ${noteStatus} · Time ${timeStatus}${projectStatusText}`,
+                `${tooltip} | ${timeTooltip}`
+            );
         } catch (e) {
-            this.updateStatusBar('📝⚪  ⏱️⚪', 'Ready');
+            this.updateStatusBar('Note ⚪ · Time ⚪', 'Ready');
         }
     }
 
