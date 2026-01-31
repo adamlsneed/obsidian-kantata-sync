@@ -282,6 +282,14 @@ export default class KantataSync extends Plugin {
             }
         });
 
+        this.addCommand({
+            id: 'create-time-entry',
+            name: 'Create AI time entry for current note',
+            editorCallback: async (editor, view) => {
+                await this.createTimeEntryForCurrentNote();
+            }
+        });
+
         // Status bar
         this.statusBarItem = this.addStatusBarItem();
         this.statusBarItem.addClass('obsidianlink-status');
@@ -2206,17 +2214,6 @@ ${teamMembers}
             });
             await this.addWorkspaceBanner(file, workspace.id, workspace.title);
 
-            // AI Time Entry: Create time entry after successful note sync
-            if (this.settings.enableAiTimeEntry) {
-                const timeResult = await this.processAiTimeEntry(workspace.id, cleanBody);
-                if (timeResult.success && timeResult.timeEntryId) {
-                    console.log(`[KantataSync] AI time entry created: ${timeResult.timeEntryId}`);
-                } else if (timeResult.error) {
-                    console.warn(`[KantataSync] AI time entry failed: ${timeResult.error}`);
-                    // Don't fail the sync, just warn
-                }
-            }
-
             return { success: true, postId };
         } catch (e: any) {
             console.error('[KantataSync] syncNote ERROR:', e);
@@ -2250,6 +2247,87 @@ ${teamMembers}
         } else {
             new Notice(`❌ Sync failed: ${result.error}`);
             this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Sync failed');
+        }
+
+        setTimeout(() => this.updateStatusBarForFile(file), 3000);
+    }
+
+    /**
+     * Create AI time entry for the current note (separate from note sync)
+     */
+    async createTimeEntryForCurrentNote(): Promise<void> {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+            new Notice('No active file');
+            return;
+        }
+
+        if (file.extension !== 'md') {
+            new Notice('Not a markdown file');
+            return;
+        }
+
+        // Check if AI time entry is enabled
+        if (!this.settings.enableAiTimeEntry) {
+            new Notice('⚠️ AI Time Entry is disabled. Enable it in settings.');
+            return;
+        }
+
+        // Check credentials
+        if (!this.hasAiCredentials()) {
+            new Notice(`⚠️ ${this.settings.aiProvider} credentials not configured`);
+            return;
+        }
+
+        // Read note content
+        const content = await this.app.vault.read(file);
+        const { frontmatter, body } = this.parseFrontmatter(content);
+        const cleanBody = this.stripForSync(body);
+
+        if (!cleanBody.trim()) {
+            new Notice('Note is empty');
+            return;
+        }
+
+        // Check if time entry already exists
+        if (frontmatter.kantata_time_entry_id) {
+            new Notice(`⚠️ Time entry already exists: ${frontmatter.kantata_time_entry_id}`);
+            return;
+        }
+
+        // Get workspace ID - either from frontmatter or search
+        let workspaceId = frontmatter.kantata_workspace_id;
+        if (!workspaceId) {
+            const customerName = this.getCustomerName(file);
+            if (!customerName) {
+                new Notice('Could not determine customer from path');
+                return;
+            }
+            const workspace = await this.searchWorkspace(customerName);
+            if (!workspace) {
+                new Notice(`No workspace found for '${customerName}'`);
+                return;
+            }
+            workspaceId = workspace.id;
+        }
+
+        // Create time entry
+        this.updateStatusBar('⏱️ Time: ⏳', 'Creating time entry...');
+        new Notice('🤖 Analyzing note and creating time entry...');
+
+        const result = await this.processAiTimeEntry(workspaceId, cleanBody);
+
+        if (result.success && result.timeEntryId) {
+            // Save time entry ID to frontmatter
+            await this.updateFrontmatter(file, {
+                kantata_time_entry_id: result.timeEntryId,
+                kantata_time_synced_at: new Date().toISOString()
+            });
+            new Notice(`✅ Time entry created! ID: ${result.timeEntryId}`);
+            this.updateStatusBar('⏱️ Time: ✅', 'Time entry created');
+        } else {
+            new Notice(`❌ Time entry failed: ${result.error}`);
+            this.updateStatusBar('⏱️ Time: ❌', 'Time entry failed');
         }
 
         setTimeout(() => this.updateStatusBarForFile(file), 3000);
