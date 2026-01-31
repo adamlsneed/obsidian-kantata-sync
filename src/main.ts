@@ -97,11 +97,24 @@ interface KantataSettings {
     enableAutoUnarchive: boolean;
     // AI Time Entry
     enableAiTimeEntry: boolean;
+    aiProvider: 'anthropic' | 'openai' | 'google' | 'ollama' | 'manual';
+    // Anthropic
     anthropicAuthMethod: 'api_key' | 'oauth_token';
     anthropicApiKey: string;
     anthropicOAuthToken: string;
-    aiModel: string;
-    defaultTimeCategory: string;
+    anthropicModel: string;
+    // OpenAI
+    openaiApiKey: string;
+    openaiModel: string;
+    // Google AI
+    googleApiKey: string;
+    googleModel: string;
+    // Ollama (local)
+    ollamaEndpoint: string;
+    ollamaModel: string;
+    // Manual mode
+    manualDefaultHours: number;
+    manualDefaultCategory: string;
 }
 
 const DEFAULT_SETTINGS: KantataSettings = {
@@ -128,11 +141,24 @@ const DEFAULT_SETTINGS: KantataSettings = {
     enableAutoUnarchive: false,
     // AI Time Entry
     enableAiTimeEntry: false,
+    aiProvider: 'anthropic',
+    // Anthropic
     anthropicAuthMethod: 'api_key',
     anthropicApiKey: '',
     anthropicOAuthToken: '',
-    aiModel: 'claude-sonnet-4-20250514',
-    defaultTimeCategory: '',
+    anthropicModel: 'claude-sonnet-4-20250514',
+    // OpenAI
+    openaiApiKey: '',
+    openaiModel: 'gpt-4o',
+    // Google AI
+    googleApiKey: '',
+    googleModel: 'gemini-1.5-flash',
+    // Ollama
+    ollamaEndpoint: 'http://localhost:11434',
+    ollamaModel: 'llama3.2',
+    // Manual
+    manualDefaultHours: 1.0,
+    manualDefaultCategory: 'Consulting',
 };
 
 class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
@@ -1009,6 +1035,26 @@ export default class KantataSync extends Plugin {
     // ==================== AI TIME ENTRY ====================
 
     /**
+     * Call AI provider based on settings
+     */
+    async callAI(prompt: string): Promise<string> {
+        switch (this.settings.aiProvider) {
+            case 'anthropic':
+                return this.callAnthropic(prompt);
+            case 'openai':
+                return this.callOpenAI(prompt);
+            case 'google':
+                return this.callGoogle(prompt);
+            case 'ollama':
+                return this.callOllama(prompt);
+            case 'manual':
+                throw new Error('Manual mode does not use AI');
+            default:
+                throw new Error(`Unknown AI provider: ${this.settings.aiProvider}`);
+        }
+    }
+
+    /**
      * Call Anthropic API with support for both API key and OAuth token auth
      */
     async callAnthropic(prompt: string): Promise<string> {
@@ -1035,7 +1081,7 @@ export default class KantataSync extends Plugin {
             method: 'POST',
             headers,
             body: JSON.stringify({
-                model: this.settings.aiModel || 'claude-sonnet-4-20250514',
+                model: this.settings.anthropicModel || 'claude-sonnet-4-20250514',
                 max_tokens: 500,
                 messages: [{ role: 'user', content: prompt }]
             })
@@ -1046,6 +1092,109 @@ export default class KantataSync extends Plugin {
             return data.content[0].text;
         }
         throw new Error('Unexpected Anthropic API response format');
+    }
+
+    /**
+     * Call OpenAI API
+     */
+    async callOpenAI(prompt: string): Promise<string> {
+        if (!this.settings.openaiApiKey) {
+            throw new Error('OpenAI API key not configured');
+        }
+
+        const response = await requestUrl({
+            url: 'https://api.openai.com/v1/chat/completions',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.settings.openaiApiKey}`
+            },
+            body: JSON.stringify({
+                model: this.settings.openaiModel || 'gpt-4o',
+                max_tokens: 500,
+                messages: [{ role: 'user', content: prompt }]
+            })
+        });
+
+        const data = response.json;
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return data.choices[0].message.content;
+        }
+        throw new Error('Unexpected OpenAI API response format');
+    }
+
+    /**
+     * Call Google AI (Gemini) API
+     */
+    async callGoogle(prompt: string): Promise<string> {
+        if (!this.settings.googleApiKey) {
+            throw new Error('Google AI API key not configured');
+        }
+
+        const model = this.settings.googleModel || 'gemini-1.5-flash';
+        const response = await requestUrl({
+            url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.googleApiKey}`,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { maxOutputTokens: 500 }
+            })
+        });
+
+        const data = response.json;
+        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+            const parts = data.candidates[0].content.parts;
+            if (parts && parts[0] && parts[0].text) {
+                return parts[0].text;
+            }
+        }
+        throw new Error('Unexpected Google AI API response format');
+    }
+
+    /**
+     * Call Ollama (local) API - no API key needed!
+     */
+    async callOllama(prompt: string): Promise<string> {
+        const endpoint = this.settings.ollamaEndpoint || 'http://localhost:11434';
+        const model = this.settings.ollamaModel || 'llama3.2';
+
+        const response = await requestUrl({
+            url: `${endpoint}/api/generate`,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: model,
+                prompt: prompt,
+                stream: false
+            })
+        });
+
+        const data = response.json;
+        if (data.response) {
+            return data.response;
+        }
+        throw new Error('Unexpected Ollama API response format');
+    }
+
+    /**
+     * Manual mode - extract basic info without AI
+     */
+    manualAnalysis(noteContent: string, availableCategories: string[]): { summary: string; category: string; hours: number; notes: string } {
+        // Simple extraction: first line as summary, default hours, first category
+        const lines = noteContent.split('\n').filter(l => l.trim());
+        const firstLine = lines[0] || 'Work session';
+        
+        return {
+            summary: firstLine.slice(0, 100),
+            category: this.settings.manualDefaultCategory || availableCategories[0] || 'Consulting',
+            hours: this.settings.manualDefaultHours || 1.0,
+            notes: lines.slice(0, 3).join(' ').slice(0, 200)
+        };
     }
 
     /**
@@ -1070,6 +1219,11 @@ export default class KantataSync extends Plugin {
         noteContent: string,
         availableCategories: string[]
     ): Promise<{ summary: string; category: string; hours: number; notes: string }> {
+        // Manual mode - no AI call
+        if (this.settings.aiProvider === 'manual') {
+            return this.manualAnalysis(noteContent, availableCategories);
+        }
+
         const prompt = `You are helping a Professional Services Solutions Architect create a time entry.
 Analyze this work note and return JSON only (no markdown, no explanation):
 
@@ -1083,7 +1237,7 @@ Analyze this work note and return JSON only (no markdown, no explanation):
 Note content:
 ${noteContent}`;
 
-        const responseText = await this.callAnthropic(prompt);
+        const responseText = await this.callAI(prompt);
         
         // Extract JSON from response (handle potential markdown wrapping)
         let jsonStr = responseText.trim();
@@ -2223,7 +2377,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Enable AI Time Entry')
-            .setDesc('Automatically create time entries when notes sync to Kantata using AI analysis')
+            .setDesc('Automatically create time entries when notes sync to Kantata')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enableAiTimeEntry)
                 .onChange(async (value) => {
@@ -2232,74 +2386,198 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Anthropic Auth Method')
-            .setDesc('How to authenticate with Claude API')
+            .setName('AI Provider')
+            .setDesc('Choose AI provider for time entry analysis')
             .addDropdown(dropdown => dropdown
-                .addOption('api_key', 'API Key (console.anthropic.com)')
-                .addOption('oauth_token', 'OAuth Token (Claude Code Pro/Max)')
-                .setValue(this.plugin.settings.anthropicAuthMethod)
-                .onChange(async (value: 'api_key' | 'oauth_token') => {
-                    this.plugin.settings.anthropicAuthMethod = value;
+                .addOption('anthropic', 'Anthropic (Claude)')
+                .addOption('openai', 'OpenAI (GPT)')
+                .addOption('google', 'Google AI (Gemini)')
+                .addOption('ollama', 'Ollama (Local - Free)')
+                .addOption('manual', 'Manual (No AI)')
+                .setValue(this.plugin.settings.aiProvider)
+                .onChange(async (value: 'anthropic' | 'openai' | 'google' | 'ollama' | 'manual') => {
+                    this.plugin.settings.aiProvider = value;
                     await this.plugin.saveSettings();
-                    this.display(); // Refresh to show appropriate field
+                    this.display(); // Refresh to show provider-specific fields
                 }));
 
-        if (this.plugin.settings.anthropicAuthMethod === 'api_key') {
+        // Provider-specific settings
+        const provider = this.plugin.settings.aiProvider;
+
+        if (provider === 'anthropic') {
             new Setting(containerEl)
-                .setName('Anthropic API Key')
-                .setDesc('Get from console.anthropic.com → API Keys (starts with sk-ant-api03-...)')
-                .addText(text => text
-                    .setPlaceholder('sk-ant-api03-...')
-                    .setValue(this.plugin.settings.anthropicApiKey)
-                    .onChange(async (value) => {
-                        this.plugin.settings.anthropicApiKey = value;
+                .setName('Anthropic Auth Method')
+                .setDesc('API Key (pay-as-you-go) or OAuth Token (Pro/Max subscribers)')
+                .addDropdown(dropdown => dropdown
+                    .addOption('api_key', 'API Key')
+                    .addOption('oauth_token', 'OAuth Token (Claude Code)')
+                    .setValue(this.plugin.settings.anthropicAuthMethod)
+                    .onChange(async (value: 'api_key' | 'oauth_token') => {
+                        this.plugin.settings.anthropicAuthMethod = value;
                         await this.plugin.saveSettings();
-                    })
-                    .inputEl.type = 'password');
-        } else {
+                        this.display();
+                    }));
+
+            if (this.plugin.settings.anthropicAuthMethod === 'api_key') {
+                new Setting(containerEl)
+                    .setName('Anthropic API Key')
+                    .setDesc('Get from console.anthropic.com (starts with sk-ant-api03-...)')
+                    .addText(text => text
+                        .setPlaceholder('sk-ant-api03-...')
+                        .setValue(this.plugin.settings.anthropicApiKey)
+                        .onChange(async (value) => {
+                            this.plugin.settings.anthropicApiKey = value;
+                            await this.plugin.saveSettings();
+                        })
+                        .inputEl.type = 'password');
+            } else {
+                new Setting(containerEl)
+                    .setName('Anthropic OAuth Token')
+                    .setDesc('Run "claude setup-token" in terminal (starts with sk-ant-oat01-...)')
+                    .addText(text => text
+                        .setPlaceholder('sk-ant-oat01-...')
+                        .setValue(this.plugin.settings.anthropicOAuthToken)
+                        .onChange(async (value) => {
+                            this.plugin.settings.anthropicOAuthToken = value;
+                            await this.plugin.saveSettings();
+                        })
+                        .inputEl.type = 'password');
+            }
+
             new Setting(containerEl)
-                .setName('Anthropic OAuth Token')
-                .setDesc('Run "claude setup-token" in terminal, then paste token (starts with sk-ant-oat01-...)')
-                .addText(text => text
-                    .setPlaceholder('sk-ant-oat01-...')
-                    .setValue(this.plugin.settings.anthropicOAuthToken)
+                .setName('Claude Model')
+                .addDropdown(dropdown => dropdown
+                    .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4')
+                    .addOption('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
+                    .addOption('claude-3-haiku-20240307', 'Claude 3 Haiku (faster)')
+                    .setValue(this.plugin.settings.anthropicModel)
                     .onChange(async (value) => {
-                        this.plugin.settings.anthropicOAuthToken = value;
+                        this.plugin.settings.anthropicModel = value;
                         await this.plugin.saveSettings();
-                    })
-                    .inputEl.type = 'password');
+                    }));
         }
 
-        new Setting(containerEl)
-            .setName('AI Model')
-            .setDesc('Claude model to use for analysis')
-            .addDropdown(dropdown => dropdown
-                .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4 (recommended)')
-                .addOption('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
-                .addOption('claude-3-haiku-20240307', 'Claude 3 Haiku (faster)')
-                .setValue(this.plugin.settings.aiModel)
-                .onChange(async (value) => {
-                    this.plugin.settings.aiModel = value;
-                    await this.plugin.saveSettings();
-                }));
+        if (provider === 'openai') {
+            new Setting(containerEl)
+                .setName('OpenAI API Key')
+                .setDesc('Get from platform.openai.com (starts with sk-...)')
+                .addText(text => text
+                    .setPlaceholder('sk-...')
+                    .setValue(this.plugin.settings.openaiApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openaiApiKey = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.type = 'password');
 
-        new Setting(containerEl)
-            .setName('Test AI Connection')
-            .setDesc('Verify Anthropic API credentials')
-            .addButton(button => button
-                .setButtonText('Test')
-                .onClick(async () => {
-                    try {
-                        const response = await this.plugin.callAnthropic('Reply with just: OK');
-                        if (response.includes('OK')) {
-                            new Notice('✅ Anthropic API connected!');
-                        } else {
-                            new Notice(`✅ Connected: ${response.slice(0, 50)}`);
+            new Setting(containerEl)
+                .setName('OpenAI Model')
+                .addDropdown(dropdown => dropdown
+                    .addOption('gpt-4o', 'GPT-4o (recommended)')
+                    .addOption('gpt-4o-mini', 'GPT-4o Mini (faster)')
+                    .addOption('gpt-4-turbo', 'GPT-4 Turbo')
+                    .addOption('gpt-3.5-turbo', 'GPT-3.5 Turbo (cheapest)')
+                    .setValue(this.plugin.settings.openaiModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openaiModel = value;
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        if (provider === 'google') {
+            new Setting(containerEl)
+                .setName('Google AI API Key')
+                .setDesc('Get from aistudio.google.com')
+                .addText(text => text
+                    .setPlaceholder('AIza...')
+                    .setValue(this.plugin.settings.googleApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.googleApiKey = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.type = 'password');
+
+            new Setting(containerEl)
+                .setName('Gemini Model')
+                .addDropdown(dropdown => dropdown
+                    .addOption('gemini-1.5-flash', 'Gemini 1.5 Flash (fast)')
+                    .addOption('gemini-1.5-pro', 'Gemini 1.5 Pro')
+                    .addOption('gemini-2.0-flash-exp', 'Gemini 2.0 Flash (experimental)')
+                    .setValue(this.plugin.settings.googleModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.googleModel = value;
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        if (provider === 'ollama') {
+            new Setting(containerEl)
+                .setName('Ollama Endpoint')
+                .setDesc('Local Ollama server URL (no API key needed!)')
+                .addText(text => text
+                    .setPlaceholder('http://localhost:11434')
+                    .setValue(this.plugin.settings.ollamaEndpoint)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ollamaEndpoint = value || 'http://localhost:11434';
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Ollama Model')
+                .setDesc('Model name (run "ollama list" to see available)')
+                .addText(text => text
+                    .setPlaceholder('llama3.2')
+                    .setValue(this.plugin.settings.ollamaModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ollamaModel = value || 'llama3.2';
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        if (provider === 'manual') {
+            new Setting(containerEl)
+                .setName('Default Hours')
+                .setDesc('Default hours for time entry (no AI analysis)')
+                .addText(text => text
+                    .setPlaceholder('1.0')
+                    .setValue(String(this.plugin.settings.manualDefaultHours))
+                    .onChange(async (value) => {
+                        this.plugin.settings.manualDefaultHours = parseFloat(value) || 1.0;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Default Category')
+                .setDesc('Default category for time entry')
+                .addText(text => text
+                    .setPlaceholder('Consulting')
+                    .setValue(this.plugin.settings.manualDefaultCategory)
+                    .onChange(async (value) => {
+                        this.plugin.settings.manualDefaultCategory = value || 'Consulting';
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        // Test button (not for manual mode)
+        if (provider !== 'manual') {
+            new Setting(containerEl)
+                .setName('Test AI Connection')
+                .setDesc(`Verify ${provider} credentials`)
+                .addButton(button => button
+                    .setButtonText('Test')
+                    .onClick(async () => {
+                        try {
+                            const response = await this.plugin.callAI('Reply with just: OK');
+                            if (response.toLowerCase().includes('ok')) {
+                                new Notice(`✅ ${provider} connected!`);
+                            } else {
+                                new Notice(`✅ Connected: ${response.slice(0, 50)}`);
+                            }
+                        } catch (e: any) {
+                            new Notice(`❌ ${provider} failed: ${e.message}`);
                         }
-                    } catch (e: any) {
-                        new Notice(`❌ Anthropic failed: ${e.message}`);
-                    }
-                }));
+                    }));
+        }
 
         // Cache Management
         containerEl.createEl('h3', { text: 'Cache Management' });
