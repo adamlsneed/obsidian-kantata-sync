@@ -1237,18 +1237,42 @@ export default class KantataSync extends Plugin {
     }
 
     /**
-     * Fetch available time entry categories from Kantata
+     * Fetch available stories/tasks from Kantata workspace that can have time logged
+     */
+    async fetchBillableStories(workspaceId: string): Promise<Array<{ id: string; title: string }>> {
+        try {
+            // Fetch stories (tasks) that are active and can have time logged
+            const response = await this.apiRequest(
+                `/stories.json?workspace_id=${workspaceId}&per_page=50&include=workspace`
+            );
+            const stories = Object.values(response.stories || {}) as any[];
+            
+            // Filter to stories that can have time logged (not archived, has budget or is billable)
+            const billable = stories
+                .filter((s: any) => s.state !== 'archived' && s.state !== 'deleted')
+                .map((s: any) => ({
+                    id: String(s.id),
+                    title: s.title || s.name || 'Untitled Task'
+                }));
+            
+            console.log(`[KantataSync] Found ${billable.length} billable stories in workspace`);
+            return billable;
+        } catch (e) {
+            console.warn('[KantataSync] Could not fetch stories:', e);
+            return [];
+        }
+    }
+
+    /**
+     * Legacy: Fetch time categories (fallback if no stories)
      */
     async fetchTimeCategories(workspaceId: string): Promise<string[]> {
-        try {
-            // Kantata stores time categories in story allocation chart
-            const response = await this.apiRequest(`/workspaces/${workspaceId}.json?include=time_entry_categories`);
-            const categories = response.time_entry_categories || {};
-            return Object.values(categories).map((c: any) => c.name || c.title || 'General');
-        } catch (e) {
-            console.warn('[KantataSync] Could not fetch time categories:', e);
-            return ['Consulting', 'Development', 'Meeting', 'Documentation', 'Support'];
+        const stories = await this.fetchBillableStories(workspaceId);
+        if (stories.length > 0) {
+            return stories.map(s => s.title);
         }
+        // Fallback defaults
+        return ['Consulting', 'Development', 'Meeting', 'Documentation', 'Support'];
     }
 
     /**
@@ -1304,36 +1328,21 @@ ${noteContent}`;
     async createTimeEntry(
         workspaceId: string,
         userId: string,
-        data: { date: string; hours: number; category: string; notes: string }
+        storyId: string | null,
+        data: { date: string; hours: number; notes: string }
     ): Promise<string> {
-        // Kantata requires story_id (task) for time entries
-        // Try to find a default story, or create time entry with just workspace
-        let storyId: string | null = null;
-        
-        try {
-            // Look for stories (tasks) in this workspace
-            const storiesResponse = await this.apiRequest(`/stories.json?workspace_id=${workspaceId}&per_page=10`);
-            const stories = Object.values(storiesResponse.stories || {}) as any[];
-            if (stories.length > 0) {
-                // Use first available story
-                storyId = stories[0].id;
-                console.log(`[KantataSync] Using story_id: ${storyId} for time entry`);
-            }
-        } catch (e) {
-            console.warn('[KantataSync] Could not fetch stories, trying without story_id');
-        }
-
         const timeEntryData: any = {
             workspace_id: workspaceId,
             user_id: userId,
             date_performed: data.date,
             time_in_minutes: Math.round(data.hours * 60),
-            notes: `[${data.category}] ${data.notes}`,
+            notes: data.notes,
             billable: true
         };
         
         if (storyId) {
             timeEntryData.story_id = storyId;
+            console.log(`[KantataSync] Creating time entry for story_id: ${storyId}`);
         }
 
         const response = await this.apiRequest('/time_entries.json', 'POST', {
@@ -1349,6 +1358,30 @@ ${noteContent}`;
     }
 
     /**
+     * Find the best matching story for a category name
+     */
+    findMatchingStory(category: string, stories: Array<{ id: string; title: string }>): string | null {
+        if (stories.length === 0) return null;
+        
+        const categoryLower = category.toLowerCase();
+        
+        // Exact match
+        const exact = stories.find(s => s.title.toLowerCase() === categoryLower);
+        if (exact) return exact.id;
+        
+        // Partial match
+        const partial = stories.find(s => 
+            s.title.toLowerCase().includes(categoryLower) || 
+            categoryLower.includes(s.title.toLowerCase())
+        );
+        if (partial) return partial.id;
+        
+        // Fallback to first story
+        console.log(`[KantataSync] No match for "${category}", using first story: ${stories[0].title}`);
+        return stories[0].id;
+    }
+
+    /**
      * Get current user ID from Kantata
      */
     async getCurrentUserId(): Promise<string> {
@@ -1361,6 +1394,28 @@ ${noteContent}`;
     }
 
     /**
+     * Check if any AI provider is configured
+     */
+    hasAiCredentials(): boolean {
+        switch (this.settings.aiProvider) {
+            case 'anthropic':
+                return !!(this.settings.anthropicApiKey || this.settings.anthropicOAuthToken);
+            case 'openai':
+                return !!this.settings.openaiApiKey;
+            case 'google':
+                return !!this.settings.googleApiKey;
+            case 'openrouter':
+                return !!this.settings.openrouterApiKey;
+            case 'ollama':
+                return true; // No API key needed
+            case 'manual':
+                return true; // No AI needed
+            default:
+                return false;
+        }
+    }
+
+    /**
      * Process AI time entry after successful note sync
      */
     async processAiTimeEntry(workspaceId: string, noteContent: string): Promise<{ success: boolean; timeEntryId?: string; error?: string }> {
@@ -1368,28 +1423,38 @@ ${noteContent}`;
             return { success: true }; // Feature disabled, silently succeed
         }
 
-        if (!this.settings.anthropicApiKey && !this.settings.anthropicOAuthToken) {
-            return { success: false, error: 'Anthropic credentials not configured' };
+        if (!this.hasAiCredentials()) {
+            return { success: false, error: `${this.settings.aiProvider} credentials not configured` };
         }
 
         try {
-            // Get available categories
-            const categories = await this.fetchTimeCategories(workspaceId);
+            // Get available stories/tasks from workspace
+            const stories = await this.fetchBillableStories(workspaceId);
+            const storyTitles = stories.length > 0 
+                ? stories.map(s => s.title)
+                : ['Consulting', 'Development', 'Meeting', 'Documentation', 'Support'];
             
             // Analyze note with AI
             console.log('[KantataSync] Analyzing note for time entry...');
-            const analysis = await this.analyzeNoteForTimeEntry(noteContent, categories);
+            console.log(`[KantataSync] Available tasks: ${storyTitles.join(', ')}`);
+            const analysis = await this.analyzeNoteForTimeEntry(noteContent, storyTitles);
             console.log('[KantataSync] AI analysis:', analysis);
+            
+            // Match AI's category to actual story_id
+            const storyId = this.findMatchingStory(analysis.category, stories);
+            if (storyId) {
+                const matchedStory = stories.find(s => s.id === storyId);
+                console.log(`[KantataSync] Matched category "${analysis.category}" to story: ${matchedStory?.title} (${storyId})`);
+            }
             
             // Get current user ID
             const userId = await this.getCurrentUserId();
             
             // Create time entry
             const today = new Date().toISOString().split('T')[0];
-            const timeEntryId = await this.createTimeEntry(workspaceId, userId, {
+            const timeEntryId = await this.createTimeEntry(workspaceId, userId, storyId, {
                 date: today,
                 hours: analysis.hours,
-                category: analysis.category,
                 notes: `${analysis.summary}\n\n${analysis.notes}`
             });
             
