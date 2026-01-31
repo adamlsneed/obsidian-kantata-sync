@@ -869,6 +869,10 @@ export default class KantataSync extends Plugin {
 
             const isSynced = frontmatter.kantata_synced === true || frontmatter.kantata_synced === 'true';
             const syncedAt = frontmatter.kantata_synced_at as string | undefined;
+            
+            // Time entry status
+            const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
+            const timeStatusText = hasTimeEntry ? '⏱️✅' : '⏱️⚪';
 
             // Get workspace status if enabled
             let projectStatusText = '';
@@ -876,7 +880,7 @@ export default class KantataSync extends Plugin {
                 const cacheResult = this.findCacheEntry(file);
                 if (cacheResult?.entry.workspaceStatus) {
                     const statusEmoji = this.getStatusEmoji(cacheResult.entry.workspaceStatusColor || 'gray');
-                    projectStatusText = `  •  Project Status: ${statusEmoji} ${cacheResult.entry.workspaceStatus}`;
+                    projectStatusText = `  •  Project: ${statusEmoji} ${cacheResult.entry.workspaceStatus}`;
                 }
             }
 
@@ -884,15 +888,15 @@ export default class KantataSync extends Plugin {
                 const syncTime = new Date(syncedAt).getTime();
                 if (file.stat.mtime > syncTime + 2000) {
                     // Pending changes - use 🔄 for "changes to sync"
-                    this.updateStatusBar(`📝 Note Sync: 🔄 Pending${projectStatusText}`, `Changes pending - click to sync`);
+                    this.updateStatusBar(`📝🔄  ${timeStatusText}${projectStatusText}`, `Note: pending changes | Time: ${hasTimeEntry ? 'logged' : 'not logged'}`);
                 } else {
-                    this.updateStatusBar(`📝 Note Sync: ✅ Synced${projectStatusText}`, `All changes synced`);
+                    this.updateStatusBar(`📝✅  ${timeStatusText}${projectStatusText}`, `Note: synced | Time: ${hasTimeEntry ? 'logged' : 'not logged'}`);
                 }
             } else {
-                this.updateStatusBar(`📝 Note Sync: ⭕ Not Synced${projectStatusText}`, `Click to sync this note`);
+                this.updateStatusBar(`📝⚪  ${timeStatusText}${projectStatusText}`, `Note: not synced | Time: ${hasTimeEntry ? 'logged' : 'not logged'}`);
             }
         } catch (e) {
-            this.updateStatusBar('📝 Note Sync: ⚪', 'Ready');
+            this.updateStatusBar('📝⚪  ⏱️⚪', 'Ready');
         }
     }
 
