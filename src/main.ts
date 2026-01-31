@@ -97,7 +97,7 @@ interface KantataSettings {
     enableAutoUnarchive: boolean;
     // AI Time Entry
     enableAiTimeEntry: boolean;
-    aiProvider: 'anthropic' | 'openai' | 'google' | 'ollama' | 'manual';
+    aiProvider: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual';
     // Anthropic
     anthropicAuthMethod: 'api_key' | 'oauth_token';
     anthropicApiKey: string;
@@ -109,6 +109,9 @@ interface KantataSettings {
     // Google AI
     googleApiKey: string;
     googleModel: string;
+    // OpenRouter
+    openrouterApiKey: string;
+    openrouterModel: string;
     // Ollama (local)
     ollamaEndpoint: string;
     ollamaModel: string;
@@ -152,7 +155,10 @@ const DEFAULT_SETTINGS: KantataSettings = {
     openaiModel: 'gpt-4o',
     // Google AI
     googleApiKey: '',
-    googleModel: 'gemini-1.5-flash',
+    googleModel: 'gemini-2.0-flash',
+    // OpenRouter
+    openrouterApiKey: '',
+    openrouterModel: 'anthropic/claude-sonnet-4',
     // Ollama
     ollamaEndpoint: 'http://localhost:11434',
     ollamaModel: 'llama3.2',
@@ -1045,6 +1051,8 @@ export default class KantataSync extends Plugin {
                 return this.callOpenAI(prompt);
             case 'google':
                 return this.callGoogle(prompt);
+            case 'openrouter':
+                return this.callOpenRouter(prompt);
             case 'ollama':
                 return this.callOllama(prompt);
             case 'manual':
@@ -1152,6 +1160,37 @@ export default class KantataSync extends Plugin {
             }
         }
         throw new Error('Unexpected Google AI API response format');
+    }
+
+    /**
+     * Call OpenRouter API - access to many models with one API key
+     */
+    async callOpenRouter(prompt: string): Promise<string> {
+        if (!this.settings.openrouterApiKey) {
+            throw new Error('OpenRouter API key not configured');
+        }
+
+        const response = await requestUrl({
+            url: 'https://openrouter.ai/api/v1/chat/completions',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.settings.openrouterApiKey}`,
+                'HTTP-Referer': 'https://obsidian.md',
+                'X-Title': 'KantataSync'
+            },
+            body: JSON.stringify({
+                model: this.settings.openrouterModel || 'anthropic/claude-sonnet-4',
+                max_tokens: 500,
+                messages: [{ role: 'user', content: prompt }]
+            })
+        });
+
+        const data = response.json;
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return data.choices[0].message.content;
+        }
+        throw new Error('Unexpected OpenRouter API response format');
     }
 
     /**
@@ -2392,10 +2431,11 @@ class KantataSettingTab extends PluginSettingTab {
                 .addOption('anthropic', 'Anthropic (Claude)')
                 .addOption('openai', 'OpenAI (GPT)')
                 .addOption('google', 'Google AI (Gemini)')
+                .addOption('openrouter', 'OpenRouter (Many Models)')
                 .addOption('ollama', 'Ollama (Local - Free)')
                 .addOption('manual', 'Manual (No AI)')
                 .setValue(this.plugin.settings.aiProvider)
-                .onChange(async (value: 'anthropic' | 'openai' | 'google' | 'ollama' | 'manual') => {
+                .onChange(async (value: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual') => {
                     this.plugin.settings.aiProvider = value;
                     await this.plugin.saveSettings();
                     this.display(); // Refresh to show provider-specific fields
@@ -2447,6 +2487,8 @@ class KantataSettingTab extends PluginSettingTab {
             new Setting(containerEl)
                 .setName('Claude Model')
                 .addDropdown(dropdown => dropdown
+                    .addOption('claude-opus-4-20250514', 'Claude Opus 4.5')
+                    .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4.5')
                     .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4')
                     .addOption('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
                     .addOption('claude-3-haiku-20240307', 'Claude 3 Haiku (faster)')
@@ -2500,12 +2542,60 @@ class KantataSettingTab extends PluginSettingTab {
             new Setting(containerEl)
                 .setName('Gemini Model')
                 .addDropdown(dropdown => dropdown
-                    .addOption('gemini-1.5-flash', 'Gemini 1.5 Flash (fast)')
+                    .addOption('gemini-2.5-pro-preview-06-05', 'Gemini 3 Pro (latest)')
+                    .addOption('gemini-2.0-flash', 'Gemini 2.0 Flash')
+                    .addOption('gemini-2.0-flash-lite', 'Gemini 2.0 Flash Lite (fastest)')
                     .addOption('gemini-1.5-pro', 'Gemini 1.5 Pro')
-                    .addOption('gemini-2.0-flash-exp', 'Gemini 2.0 Flash (experimental)')
+                    .addOption('gemini-1.5-flash', 'Gemini 1.5 Flash')
                     .setValue(this.plugin.settings.googleModel)
                     .onChange(async (value) => {
                         this.plugin.settings.googleModel = value;
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        if (provider === 'openrouter') {
+            new Setting(containerEl)
+                .setName('OpenRouter API Key')
+                .setDesc('Get from openrouter.ai/keys')
+                .addText(text => text
+                    .setPlaceholder('sk-or-v1-...')
+                    .setValue(this.plugin.settings.openrouterApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openrouterApiKey = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.type = 'password');
+
+            new Setting(containerEl)
+                .setName('OpenRouter Model')
+                .setDesc('Access Claude, GPT, Gemini, Llama, and more with one API key')
+                .addDropdown(dropdown => dropdown
+                    // Anthropic
+                    .addOption('anthropic/claude-opus-4', 'Claude Opus 4.5')
+                    .addOption('anthropic/claude-sonnet-4', 'Claude Sonnet 4.5')
+                    .addOption('anthropic/claude-3.5-sonnet', 'Claude 3.5 Sonnet')
+                    .addOption('anthropic/claude-3-haiku', 'Claude 3 Haiku')
+                    // OpenAI
+                    .addOption('openai/gpt-4o', 'GPT-4o')
+                    .addOption('openai/gpt-4o-mini', 'GPT-4o Mini')
+                    .addOption('openai/gpt-4-turbo', 'GPT-4 Turbo')
+                    // Google
+                    .addOption('google/gemini-2.5-pro-preview', 'Gemini 3 Pro')
+                    .addOption('google/gemini-2.0-flash-001', 'Gemini 2.0 Flash')
+                    .addOption('google/gemini-flash-1.5', 'Gemini 1.5 Flash')
+                    // Meta
+                    .addOption('meta-llama/llama-3.3-70b-instruct', 'Llama 3.3 70B')
+                    .addOption('meta-llama/llama-3.1-8b-instruct', 'Llama 3.1 8B (cheap)')
+                    // Mistral
+                    .addOption('mistralai/mistral-large-2411', 'Mistral Large')
+                    .addOption('mistralai/mistral-small-2503', 'Mistral Small')
+                    // DeepSeek
+                    .addOption('deepseek/deepseek-chat-v3-0324', 'DeepSeek V3')
+                    .addOption('deepseek/deepseek-r1', 'DeepSeek R1')
+                    .setValue(this.plugin.settings.openrouterModel)
+                    .onChange(async (value) => {
+                        this.plugin.settings.openrouterModel = value;
                         await this.plugin.saveSettings();
                     }));
         }
