@@ -95,6 +95,13 @@ interface KantataSettings {
     archiveFolderName: string;
     archiveStatuses: string[];
     enableAutoUnarchive: boolean;
+    // AI Time Entry
+    enableAiTimeEntry: boolean;
+    anthropicAuthMethod: 'api_key' | 'oauth_token';
+    anthropicApiKey: string;
+    anthropicOAuthToken: string;
+    aiModel: string;
+    defaultTimeCategory: string;
 }
 
 const DEFAULT_SETTINGS: KantataSettings = {
@@ -119,6 +126,13 @@ const DEFAULT_SETTINGS: KantataSettings = {
     archiveFolderName: '_Archive',
     archiveStatuses: ['Archived', 'Closed', 'Cancelled', 'Cancelled Confirmed', 'Completed', 'Delivered', 'Done', 'Submitted'],
     enableAutoUnarchive: false,
+    // AI Time Entry
+    enableAiTimeEntry: false,
+    anthropicAuthMethod: 'api_key',
+    anthropicApiKey: '',
+    anthropicOAuthToken: '',
+    aiModel: 'claude-sonnet-4-20250514',
+    defaultTimeCategory: '',
 };
 
 class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
@@ -992,6 +1006,184 @@ export default class KantataSync extends Plugin {
         }
     }
 
+    // ==================== AI TIME ENTRY ====================
+
+    /**
+     * Call Anthropic API with support for both API key and OAuth token auth
+     */
+    async callAnthropic(prompt: string): Promise<string> {
+        const headers: Record<string, string> = {
+            'content-type': 'application/json',
+            'anthropic-version': '2023-06-01'
+        };
+
+        if (this.settings.anthropicAuthMethod === 'oauth_token') {
+            if (!this.settings.anthropicOAuthToken) {
+                throw new Error('Anthropic OAuth token not configured');
+            }
+            headers['Authorization'] = `Bearer ${this.settings.anthropicOAuthToken}`;
+            headers['anthropic-beta'] = 'oauth-2025-04-20';
+        } else {
+            if (!this.settings.anthropicApiKey) {
+                throw new Error('Anthropic API key not configured');
+            }
+            headers['x-api-key'] = this.settings.anthropicApiKey;
+        }
+
+        const response = await requestUrl({
+            url: 'https://api.anthropic.com/v1/messages',
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model: this.settings.aiModel || 'claude-sonnet-4-20250514',
+                max_tokens: 500,
+                messages: [{ role: 'user', content: prompt }]
+            })
+        });
+
+        const data = response.json;
+        if (data.content && data.content[0] && data.content[0].text) {
+            return data.content[0].text;
+        }
+        throw new Error('Unexpected Anthropic API response format');
+    }
+
+    /**
+     * Fetch available time entry categories from Kantata
+     */
+    async fetchTimeCategories(workspaceId: string): Promise<string[]> {
+        try {
+            // Kantata stores time categories in story allocation chart
+            const response = await this.apiRequest(`/workspaces/${workspaceId}.json?include=time_entry_categories`);
+            const categories = response.time_entry_categories || {};
+            return Object.values(categories).map((c: any) => c.name || c.title || 'General');
+        } catch (e) {
+            console.warn('[KantataSync] Could not fetch time categories:', e);
+            return ['Consulting', 'Development', 'Meeting', 'Documentation', 'Support'];
+        }
+    }
+
+    /**
+     * Analyze note content with AI to generate time entry data
+     */
+    async analyzeNoteForTimeEntry(
+        noteContent: string,
+        availableCategories: string[]
+    ): Promise<{ summary: string; category: string; hours: number; notes: string }> {
+        const prompt = `You are helping a Professional Services Solutions Architect create a time entry.
+Analyze this work note and return JSON only (no markdown, no explanation):
+
+{
+  "summary": "One sentence, max 100 chars, action-oriented",
+  "category": "Pick from: ${availableCategories.join(', ')}",
+  "hours": decimal number estimate based on work described,
+  "notes": "2-3 sentences, professional, concise"
+}
+
+Note content:
+${noteContent}`;
+
+        const responseText = await this.callAnthropic(prompt);
+        
+        // Extract JSON from response (handle potential markdown wrapping)
+        let jsonStr = responseText.trim();
+        if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+        }
+        
+        try {
+            const parsed = JSON.parse(jsonStr);
+            return {
+                summary: String(parsed.summary || '').slice(0, 100),
+                category: parsed.category || availableCategories[0] || 'General',
+                hours: Number(parsed.hours) || 1,
+                notes: String(parsed.notes || '')
+            };
+        } catch (e) {
+            console.error('[KantataSync] Failed to parse AI response:', responseText);
+            throw new Error('Failed to parse AI response as JSON');
+        }
+    }
+
+    /**
+     * Create a time entry in Kantata for the given workspace
+     */
+    async createTimeEntry(
+        workspaceId: string,
+        userId: string,
+        data: { date: string; hours: number; category: string; notes: string }
+    ): Promise<string> {
+        const response = await this.apiRequest('/time_entries.json', 'POST', {
+            time_entry: {
+                workspace_id: workspaceId,
+                user_id: userId,
+                date_performed: data.date,
+                time_in_minutes: Math.round(data.hours * 60),
+                notes: data.notes,
+                category: data.category
+            }
+        });
+        
+        const entries = Object.values(response.time_entries || {}) as any[];
+        if (entries.length > 0) {
+            console.log(`[KantataSync] Created time entry: ${entries[0].id}`);
+            return entries[0].id;
+        }
+        throw new Error('Time entry created but no ID returned');
+    }
+
+    /**
+     * Get current user ID from Kantata
+     */
+    async getCurrentUserId(): Promise<string> {
+        const response = await this.apiRequest('/users/me.json');
+        const users = Object.values(response.users || {}) as any[];
+        if (users.length > 0) {
+            return users[0].id;
+        }
+        throw new Error('Could not determine current user ID');
+    }
+
+    /**
+     * Process AI time entry after successful note sync
+     */
+    async processAiTimeEntry(workspaceId: string, noteContent: string): Promise<{ success: boolean; timeEntryId?: string; error?: string }> {
+        if (!this.settings.enableAiTimeEntry) {
+            return { success: true }; // Feature disabled, silently succeed
+        }
+
+        if (!this.settings.anthropicApiKey && !this.settings.anthropicOAuthToken) {
+            return { success: false, error: 'Anthropic credentials not configured' };
+        }
+
+        try {
+            // Get available categories
+            const categories = await this.fetchTimeCategories(workspaceId);
+            
+            // Analyze note with AI
+            console.log('[KantataSync] Analyzing note for time entry...');
+            const analysis = await this.analyzeNoteForTimeEntry(noteContent, categories);
+            console.log('[KantataSync] AI analysis:', analysis);
+            
+            // Get current user ID
+            const userId = await this.getCurrentUserId();
+            
+            // Create time entry
+            const today = new Date().toISOString().split('T')[0];
+            const timeEntryId = await this.createTimeEntry(workspaceId, userId, {
+                date: today,
+                hours: analysis.hours,
+                category: analysis.category,
+                notes: `${analysis.summary}\n\n${analysis.notes}`
+            });
+            
+            return { success: true, timeEntryId };
+        } catch (e: any) {
+            console.error('[KantataSync] AI time entry failed:', e);
+            return { success: false, error: e.message };
+        }
+    }
+
     async searchWorkspace(customerName: string): Promise<{ id: string; title: string } | null> {
         if (this.workspaceCache[customerName]) {
             return {
@@ -1731,6 +1923,17 @@ ${teamMembers}
             });
             await this.addWorkspaceBanner(file, workspace.id, workspace.title);
 
+            // AI Time Entry: Create time entry after successful note sync
+            if (this.settings.enableAiTimeEntry) {
+                const timeResult = await this.processAiTimeEntry(workspace.id, cleanBody);
+                if (timeResult.success && timeResult.timeEntryId) {
+                    console.log(`[KantataSync] AI time entry created: ${timeResult.timeEntryId}`);
+                } else if (timeResult.error) {
+                    console.warn(`[KantataSync] AI time entry failed: ${timeResult.error}`);
+                    // Don't fail the sync, just warn
+                }
+            }
+
             return { success: true, postId };
         } catch (e: any) {
             console.error('[KantataSync] syncNote ERROR:', e);
@@ -2013,6 +2216,89 @@ class KantataSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.enableAutoUnarchive = value;
                     await this.plugin.saveSettings();
+                }));
+
+        // AI Time Entry
+        containerEl.createEl('h3', { text: 'AI Time Entry' });
+
+        new Setting(containerEl)
+            .setName('Enable AI Time Entry')
+            .setDesc('Automatically create time entries when notes sync to Kantata using AI analysis')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableAiTimeEntry)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableAiTimeEntry = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Anthropic Auth Method')
+            .setDesc('How to authenticate with Claude API')
+            .addDropdown(dropdown => dropdown
+                .addOption('api_key', 'API Key (console.anthropic.com)')
+                .addOption('oauth_token', 'OAuth Token (Claude Code Pro/Max)')
+                .setValue(this.plugin.settings.anthropicAuthMethod)
+                .onChange(async (value: 'api_key' | 'oauth_token') => {
+                    this.plugin.settings.anthropicAuthMethod = value;
+                    await this.plugin.saveSettings();
+                    this.display(); // Refresh to show appropriate field
+                }));
+
+        if (this.plugin.settings.anthropicAuthMethod === 'api_key') {
+            new Setting(containerEl)
+                .setName('Anthropic API Key')
+                .setDesc('Get from console.anthropic.com → API Keys (starts with sk-ant-api03-...)')
+                .addText(text => text
+                    .setPlaceholder('sk-ant-api03-...')
+                    .setValue(this.plugin.settings.anthropicApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.anthropicApiKey = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.type = 'password');
+        } else {
+            new Setting(containerEl)
+                .setName('Anthropic OAuth Token')
+                .setDesc('Run "claude setup-token" in terminal, then paste token (starts with sk-ant-oat01-...)')
+                .addText(text => text
+                    .setPlaceholder('sk-ant-oat01-...')
+                    .setValue(this.plugin.settings.anthropicOAuthToken)
+                    .onChange(async (value) => {
+                        this.plugin.settings.anthropicOAuthToken = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.type = 'password');
+        }
+
+        new Setting(containerEl)
+            .setName('AI Model')
+            .setDesc('Claude model to use for analysis')
+            .addDropdown(dropdown => dropdown
+                .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4 (recommended)')
+                .addOption('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
+                .addOption('claude-3-haiku-20240307', 'Claude 3 Haiku (faster)')
+                .setValue(this.plugin.settings.aiModel)
+                .onChange(async (value) => {
+                    this.plugin.settings.aiModel = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Test AI Connection')
+            .setDesc('Verify Anthropic API credentials')
+            .addButton(button => button
+                .setButtonText('Test')
+                .onClick(async () => {
+                    try {
+                        const response = await this.plugin.callAnthropic('Reply with just: OK');
+                        if (response.includes('OK')) {
+                            new Notice('✅ Anthropic API connected!');
+                        } else {
+                            new Notice(`✅ Connected: ${response.slice(0, 50)}`);
+                        }
+                    } catch (e: any) {
+                        new Notice(`❌ Anthropic failed: ${e.message}`);
+                    }
                 }));
 
         // Cache Management
