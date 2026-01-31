@@ -1287,18 +1287,20 @@ export default class KantataSync extends Plugin {
             return this.manualAnalysis(noteContent, availableCategories);
         }
 
-        const prompt = `You are helping a Professional Services Solutions Architect create a time entry.
-Analyze this work note and return JSON only (no markdown, no explanation):
+        const prompt = `Convert this work session note into a billable time entry. Return JSON only.
 
-{
-  "summary": "One sentence, max 100 chars, action-oriented",
-  "category": "Pick from: ${availableCategories.join(', ')}",
-  "hours": decimal number estimate based on work described,
-  "notes": "2-3 sentences, professional, concise"
-}
+TASKS (pick one): ${availableCategories.join(' | ')}
 
-Note content:
-${noteContent}`;
+RULES:
+- summary: What was done (1 line, start with verb, max 100 chars)
+- category: MUST match one task above exactly
+- hours: Estimate from work described (0.25 = 15min, 0.5 = 30min, 1 = 1hr)
+- notes: Key details for billing (2-3 sentences, professional)
+
+NOTE:
+${noteContent}
+
+JSON:`;
 
         const responseText = await this.callAI(prompt);
         
