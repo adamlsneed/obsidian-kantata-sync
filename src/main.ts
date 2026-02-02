@@ -1125,7 +1125,8 @@ export default class KantataSync extends Plugin {
                 throw new Error('Anthropic OAuth token not configured');
             }
             headers['Authorization'] = `Bearer ${this.settings.anthropicOAuthToken}`;
-            headers['anthropic-beta'] = 'oauth-2025-04-20';
+            // Note: anthropic-beta header may be needed for some OAuth features
+            // headers['anthropic-beta'] = 'oauth-2025-04-20';
         } else {
             if (!this.settings.anthropicApiKey) {
                 throw new Error('Anthropic API key not configured');
