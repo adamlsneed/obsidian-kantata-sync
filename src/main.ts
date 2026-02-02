@@ -2892,9 +2892,10 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Clear Workspace Cache')
-            .setDesc('Remove all cached customer → workspace mappings')
+            .setDesc('⚠️ USE WITH CAUTION: Removes all cached customer → workspace mappings. You will need to re-link folders.')
             .addButton(button => button
                 .setButtonText('Clear Cache')
+                .setWarning()
                 .onClick(async () => {
                     this.plugin.workspaceCache = {};
                     await this.plugin.saveWorkspaceCache();
