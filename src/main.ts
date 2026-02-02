@@ -2687,12 +2687,9 @@ class KantataSettingTab extends PluginSettingTab {
                 new Setting(containerEl)
                     .setName('Anthropic OAuth Token')
                     .setDesc(createFragment(frag => {
-                        frag.appendText('For Claude Pro/Max subscribers. ');
-                        frag.createEl('a', {
-                            text: 'Generate token here',
-                            href: 'https://console.anthropic.com/settings/tokens'
-                        });
-                        frag.appendText(' or run "claude setup-token" in terminal.');
+                        frag.appendText('For Claude Pro/Max subscribers. Run ');
+                        frag.createEl('code', { text: 'claude setup-token' });
+                        frag.appendText(' in terminal to generate. Token starts with sk-ant-oat01-...');
                     }))
                     .addText(text => text
                         .setPlaceholder('sk-ant-oat01-...')
