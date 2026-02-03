@@ -630,9 +630,10 @@ export default class KantataSync extends Plugin {
             });
 
             menu.addItem((item) => {
-                item.setTitle('🎯 Change Project Status')
+                item.setTitle('🎯 Change Status (opens Kantata)')
                     .onClick(async () => {
-                        await this.openStatusChangeModal();
+                        // Status changes not supported via API - open in Kantata
+                        await this.openInKantata();
                     });
             });
             
