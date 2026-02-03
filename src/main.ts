@@ -1536,40 +1536,38 @@ JSON:`;
 
         const prompt = `Organize these work notes into the template below.
 
-CRITICAL - DO NOT HALLUCINATE:
-- NEVER make up or invent ANY information
-- ONLY use facts explicitly stated in the notes
-- If info is missing, use "-" (dash) - do NOT guess
-- Rephrase for clarity but do NOT add new information
-- Do NOT assume or infer things not explicitly stated
+RULES:
+- Accomplishments: ELABORATE and expand into professional sentences - this is the main content
+- All other fields: ONLY include if explicitly mentioned, otherwise use "-"
+- NEVER invent attendees, issues, blockers, next steps - only use what's stated
 
 ROUGH NOTES:
 ${notes}
 
-OUTPUT FORMAT (use "-" for missing info):
+OUTPUT FORMAT:
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [ONLY if explicitly mentioned, otherwise "-"]
+**${customerName} Attendees:** [only if mentioned, otherwise "-"]
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
-[ONLY rephrase what's explicitly stated as done]
+[ELABORATE: expand the work notes into full professional sentences]
 
 **Issues:**
-[ONLY problems explicitly mentioned, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 **Blockers:**
-[ONLY if explicitly stated, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 **Next Session:**
-[ONLY if explicitly mentioned, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 **Next Steps:**
-[ONLY if explicitly stated, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 ---
 
@@ -1594,45 +1592,44 @@ OUTPUT:`;
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
         const imageNote = images && images.length > 0 
-            ? `\n\nIMAGES ATTACHED: ${images.length} image(s). Extract ONLY what you can clearly see (attendee names, etc).`
+            ? `\n\nIMAGES: ${images.length} attached. Extract attendee names you can clearly see.`
             : '';
 
         const prompt = `Organize these work notes into the template below.${imageNote}
 
-CRITICAL RULES:
-- NEVER make up or invent ANY information
-- ONLY include facts explicitly stated in the notes or clearly visible in images
-- If information is not present, use "-" (dash)
-- Do NOT guess, assume, or fill in blanks creatively
-- Do NOT add details that aren't in the source material
+RULES:
+- Accomplishments: ELABORATE and expand into professional sentences
+- Attendees: Extract from images if visible, otherwise "-"
+- All other fields: ONLY include if explicitly mentioned, otherwise "-"
+- NEVER invent information for Issues, Blockers, Next Steps
 
 ROUGH NOTES:
 ${roughNotes}
 
-OUTPUT FORMAT (use "-" if info not explicitly provided):
+OUTPUT FORMAT:
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [ONLY names clearly visible in images or mentioned in notes, otherwise "-"]
+**${customerName} Attendees:** [from images or notes, otherwise "-"]
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
-[ONLY what's explicitly stated as done]
+[ELABORATE: expand work notes into full professional sentences]
 
 **Issues:**
-[ONLY problems explicitly mentioned]
+[only if mentioned, otherwise "-"]
 
 **Blockers:**
-[ONLY if explicitly stated, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 **Next Session:**
-[ONLY if explicitly mentioned, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 **Next Steps:**
-[ONLY if explicitly stated, otherwise "-"]
+[only if mentioned, otherwise "-"]
 
 ---
 
