@@ -3438,15 +3438,26 @@ ${teamMembers}
      * Update workspace status in Kantata
      */
     async updateWorkspaceStatus(workspaceId: string, statusMessage: string): Promise<void> {
-        // Kantata expects status as an object with message property
-        await this.apiRequest(`/workspaces/${workspaceId}.json`, 'PUT', {
-            workspace: {
-                status: {
-                    message: statusMessage
-                }
+        // Try different Kantata API formats
+        const formats = [
+            { workspace: { status_message: statusMessage } },
+            { workspace: { status: statusMessage } },
+            { workspace: { change_status: statusMessage } },
+        ];
+        
+        let lastError = '';
+        for (const body of formats) {
+            try {
+                await this.apiRequest(`/workspaces/${workspaceId}.json`, 'PUT', body);
+                console.log(`[KantataSync] Updated workspace ${workspaceId} status to: ${statusMessage}`);
+                return;
+            } catch (e: any) {
+                lastError = e.message;
+                console.log(`[KantataSync] Format failed: ${JSON.stringify(body)}, error: ${e.message}`);
             }
-        });
-        console.log(`[KantataSync] Updated workspace ${workspaceId} status to: ${statusMessage}`);
+        }
+        
+        throw new Error(`Could not update status. API may not support status changes. Last error: ${lastError}`);
     }
 
     /**
