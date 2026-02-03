@@ -1133,16 +1133,32 @@ export default class KantataSync extends Plugin {
             headers['x-api-key'] = this.settings.anthropicApiKey;
         }
 
-        const response = await requestUrl({
-            url: 'https://api.anthropic.com/v1/messages',
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: this.settings.anthropicModel || 'claude-sonnet-4-20250514',
-                max_tokens: 500,
-                messages: [{ role: 'user', content: prompt }]
-            })
-        });
+        let response;
+        try {
+            response = await requestUrl({
+                url: 'https://api.anthropic.com/v1/messages',
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: this.settings.anthropicModel || 'claude-sonnet-4-20250514',
+                    max_tokens: 500,
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+        } catch (e: any) {
+            // Extract error details from response
+            const status = e.status || 'unknown';
+            let errorMsg = `Anthropic API error (${status})`;
+            try {
+                const errorData = JSON.parse(e.message || '{}');
+                if (errorData.error?.message) {
+                    errorMsg = `${errorMsg}: ${errorData.error.message}`;
+                }
+            } catch {
+                if (e.message) errorMsg = `${errorMsg}: ${e.message}`;
+            }
+            throw new Error(errorMsg);
+        }
 
         const data = response.json;
         if (data.content && data.content[0] && data.content[0].text) {
