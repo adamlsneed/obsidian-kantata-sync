@@ -630,10 +630,9 @@ export default class KantataSync extends Plugin {
             });
 
             menu.addItem((item) => {
-                item.setTitle('🎯 Change Status (opens Kantata)')
+                item.setTitle('🎯 Change Project Status')
                     .onClick(async () => {
-                        // Status changes not supported via API - open in Kantata
-                        await this.openInKantata();
+                        await this.openStatusChangeModal();
                     });
             });
             
@@ -3376,7 +3375,7 @@ ${teamMembers}
                 async (status) => {
                     try {
                         new Notice(`🔄 Changing status to ${status.message}...`);
-                        await this.updateWorkspaceStatus(workspaceId, status.message);
+                        await this.updateWorkspaceStatus(workspaceId, status.key);
                         
                         // Update cache
                         cacheResult.entry.workspaceStatus = status.message;
@@ -3400,23 +3399,33 @@ ${teamMembers}
 
     /**
      * Get available workspace statuses from settings
+     * Format: color:key=Label,key2=Label2 OR color:Label (key auto-generated)
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
         const statuses: StatusOption[] = [];
         const customStatuses = this.settings.customStatuses || '';
         
-        // Parse format: color:status1,status2,status3
+        // Parse format: color:status1,status2,status3 or color:key=Label
         const lines = customStatuses.split('\n').filter(l => l.trim());
         for (const line of lines) {
-            const [color, statusList] = line.split(':');
+            const colonIdx = line.indexOf(':');
+            if (colonIdx === -1) continue;
+            
+            const color = line.substring(0, colonIdx).trim();
+            const statusList = line.substring(colonIdx + 1);
+            
             if (color && statusList) {
-                const statusNames = statusList.split(',').map(s => s.trim()).filter(s => s);
-                for (const name of statusNames) {
-                    statuses.push({
-                        key: name.toLowerCase().replace(/\s+/g, '_'),
-                        message: name,
-                        color: color.trim()
-                    });
+                const statusItems = statusList.split(',').map(s => s.trim()).filter(s => s);
+                for (const item of statusItems) {
+                    // Support both "key=Label" and just "Label" formats
+                    if (item.includes('=')) {
+                        const [key, message] = item.split('=').map(s => s.trim());
+                        statuses.push({ key, message, color });
+                    } else {
+                        // Generate key from label: "In Progress" -> "in_progress"
+                        const key = color + '_' + item.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                        statuses.push({ key, message: item, color });
+                    }
                 }
             }
         }
@@ -3424,11 +3433,11 @@ ${teamMembers}
         // Fallback if no custom statuses
         if (statuses.length === 0) {
             return [
-                { key: 'in_progress', message: 'In Progress', color: 'green' },
-                { key: 'on_hold', message: 'On Hold', color: 'yellow' },
-                { key: 'at_risk', message: 'At Risk', color: 'red' },
-                { key: 'not_started', message: 'Not Started', color: 'gray' },
-                { key: 'completed', message: 'Completed', color: 'blue' },
+                { key: 'green_in_progress', message: 'In Progress', color: 'green' },
+                { key: 'yellow_on_hold', message: 'On Hold', color: 'yellow' },
+                { key: 'red_at_risk', message: 'At Risk', color: 'red' },
+                { key: 'gray_not_started', message: 'Not Started', color: 'gray' },
+                { key: 'blue_completed', message: 'Completed', color: 'blue' },
             ];
         }
 
@@ -3436,29 +3445,16 @@ ${teamMembers}
     }
 
     /**
-     * Update workspace status in Kantata
+     * Update workspace status in Kantata using status_key
      */
-    async updateWorkspaceStatus(workspaceId: string, statusMessage: string): Promise<void> {
-        // Try different Kantata API formats
-        const formats = [
-            { workspace: { status_message: statusMessage } },
-            { workspace: { status: statusMessage } },
-            { workspace: { change_status: statusMessage } },
-        ];
-        
-        let lastError = '';
-        for (const body of formats) {
-            try {
-                await this.apiRequest(`/workspaces/${workspaceId}.json`, 'PUT', body);
-                console.log(`[KantataSync] Updated workspace ${workspaceId} status to: ${statusMessage}`);
-                return;
-            } catch (e: any) {
-                lastError = e.message;
-                console.log(`[KantataSync] Format failed: ${JSON.stringify(body)}, error: ${e.message}`);
+    async updateWorkspaceStatus(workspaceId: string, statusKey: string): Promise<void> {
+        // Kantata API uses status_key field
+        await this.apiRequest(`/workspaces/${workspaceId}.json`, 'PUT', {
+            workspace: {
+                status_key: statusKey
             }
-        }
-        
-        throw new Error(`Could not update status. API may not support status changes. Last error: ${lastError}`);
+        });
+        console.log(`[KantataSync] Updated workspace ${workspaceId} status_key to: ${statusKey}`);
     }
 
     /**
