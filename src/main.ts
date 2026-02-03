@@ -226,6 +226,7 @@ class ManualTimeEntryModal extends Modal {
     private existingEntryId: string = '';
     private onSubmit: (taskId: string, hours: number, notes: string) => void;
     private onUpdate: ((hours: number, notes: string) => void) | null = null;
+    private onDelete: (() => void) | null = null;
 
     constructor(
         app: App, 
@@ -234,7 +235,8 @@ class ManualTimeEntryModal extends Modal {
         tasks: TaskOption[], 
         onSubmit: (taskId: string, hours: number, notes: string) => void,
         existingEntry?: { id: string; hours: number; notes: string; storyId: string },
-        onUpdate?: (hours: number, notes: string) => void
+        onUpdate?: (hours: number, notes: string) => void,
+        onDelete?: () => void
     ) {
         super(app);
         this.plugin = plugin;
@@ -249,6 +251,7 @@ class ManualTimeEntryModal extends Modal {
             this.notes = existingEntry.notes || '';
             this.selectedTaskId = existingEntry.storyId;
             this.onUpdate = onUpdate || null;
+            this.onDelete = onDelete || null;
         } else if (tasks.length > 0) {
             this.selectedTaskId = tasks[0].id;
         }
@@ -333,6 +336,18 @@ class ManualTimeEntryModal extends Modal {
         buttonContainer.style.display = 'flex';
         buttonContainer.style.justifyContent = 'flex-end';
         buttonContainer.style.gap = '10px';
+
+        // Delete button (edit mode only)
+        if (this.isEditMode && this.onDelete) {
+            const deleteBtn = buttonContainer.createEl('button', { text: 'Delete', cls: 'mod-warning' });
+            deleteBtn.style.marginRight = 'auto'; // Push to left
+            deleteBtn.addEventListener('click', () => {
+                if (confirm('Delete this time entry? This cannot be undone.')) {
+                    this.onDelete!();
+                    this.close();
+                }
+            });
+        }
 
         const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());
@@ -3109,9 +3124,31 @@ ${teamMembers}
                                 kantata_synced_at: new Date().toISOString()
                             });
                             setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
+                            setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
                         }
                     } catch (e: any) {
                         new Notice(`❌ Failed to update time entry: ${e.message}`);
+                    }
+                },
+                async () => {
+                    // Delete callback for edit mode
+                    try {
+                        new Notice('🗑️ Deleting time entry...');
+                        await this.deleteTimeEntry(existingEntryId!);
+                        new Notice('✅ Time entry deleted');
+                        
+                        // Clear frontmatter
+                        const activeFile = this.app.workspace.getActiveFile();
+                        if (activeFile) {
+                            await this.updateFrontmatter(activeFile, {
+                                kantata_time_entry_id: null,
+                                kantata_time_synced_at: null
+                            });
+                            setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
+                            setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
+                        }
+                    } catch (e: any) {
+                        new Notice(`❌ Failed to delete time entry: ${e.message}`);
                     }
                 }
             );
