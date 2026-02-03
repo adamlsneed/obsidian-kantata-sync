@@ -148,8 +148,8 @@ const DEFAULT_SETTINGS: KantataSettings = {
     enableAiTimeEntry: false,
     customTemplate: `==**Meeting Details**==
 **Customer:** {{customer}}
-**Work Session:** {{date}} @ {{time}} CST
-**Netwrix Attendees:** Adam Sneed
+**Work Session:** {{date}} @ {{time}}
+**Our Attendees:**
 **{{customer}} Attendees:**
 
 ==**Activities/Notes**==
@@ -1901,8 +1901,8 @@ OUTPUT FORMAT (OMIT empty sections):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
-**Work Session:** ${dateStr} @ ${timeStr} CST
-**Netwrix Attendees:** Adam Sneed
+**Work Session:** ${dateStr} @ ${timeStr}
+**Our Attendees:**
 **${customerName} Attendees:** [if mentioned]
 
 ==**Activities/Notes**==
@@ -1956,8 +1956,8 @@ OUTPUT FORMAT (include ALL sections, leave blank if no content):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
-**Work Session:** ${dateStr} @ ${timeStr} CST
-**Netwrix Attendees:** Adam Sneed
+**Work Session:** ${dateStr} @ ${timeStr}
+**Our Attendees:**
 **${customerName} Attendees:** [from images/notes or leave blank]
 
 ==**Activities/Notes**==
@@ -2773,8 +2773,8 @@ ${teamMembers}
     getTemplate(customerName: string, dateStr: string, timeStr: string): string {
         const defaultTemplate = `==**Meeting Details**==
 **Customer:** {{customer}}
-**Work Session:** {{date}} @ {{time}} CST
-**Netwrix Attendees:** Adam Sneed
+**Work Session:** {{date}} @ {{time}}
+**Our Attendees:**
 **{{customer}} Attendees:**
 
 ==**Activities/Notes**==
