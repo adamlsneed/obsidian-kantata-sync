@@ -337,7 +337,7 @@ export default class KantataSync extends Plugin {
             
             menu.showAtMouseEvent(evt);
         });
-        this.updateStatusBar('Note ⚪ · Time ⚪', 'Click for options');
+        this.updateStatusBar(this.settings.enableAiTimeEntry ? 'Note ⚪ · Time ⚪' : 'Note ⚪', 'Click for options');
 
         // File event handlers
         this.registerEvent(this.app.workspace.on('file-open', async (file) => {
@@ -917,9 +917,15 @@ export default class KantataSync extends Plugin {
             const isSynced = frontmatter.kantata_synced === true || frontmatter.kantata_synced === 'true';
             const syncedAt = frontmatter.kantata_synced_at as string | undefined;
             
-            // Time entry status
-            const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
-            const timeStatus = hasTimeEntry ? '✅' : '⚪';
+            // Time entry status (only if AI time entry enabled)
+            let timeStatusText = '';
+            let timeTooltip = '';
+            if (this.settings.enableAiTimeEntry) {
+                const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
+                const timeStatus = hasTimeEntry ? '✅' : '⚪';
+                timeStatusText = ` · Time ${timeStatus}`;
+                timeTooltip = hasTimeEntry ? ' | Time logged' : ' | No time entry';
+            }
 
             // Get workspace status if enabled
             let projectStatusText = '';
@@ -948,13 +954,12 @@ export default class KantataSync extends Plugin {
                 tooltip = 'Note not synced';
             }
 
-            const timeTooltip = hasTimeEntry ? 'Time logged' : 'No time entry - click to create';
             this.updateStatusBar(
-                `Note ${noteStatus} · Time ${timeStatus}${projectStatusText}`,
-                `${tooltip} | ${timeTooltip}`
+                `Note ${noteStatus}${timeStatusText}${projectStatusText}`,
+                `${tooltip}${timeTooltip}`
             );
         } catch (e) {
-            this.updateStatusBar('Note ⚪ · Time ⚪', 'Ready');
+            this.updateStatusBar(this.settings.enableAiTimeEntry ? 'Note ⚪ · Time ⚪' : 'Note ⚪', 'Ready');
         }
     }
 
@@ -2748,6 +2753,7 @@ ${teamMembers}
             
             if (isEmpty) {
                 // Provide blank template
+                console.log('[KantataSync] Note is empty, creating blank template');
                 new Notice('📝 Creating blank template...');
                 const now = new Date();
                 const roundedMinutes = Math.round(now.getMinutes() / 30) * 30;
@@ -2817,7 +2823,9 @@ ${teamMembers}
             }
             
             // Replace content (keep frontmatter)
+            console.log('[KantataSync] Setting editor value, organized length:', organized.length);
             editor.setValue(frontmatter + organized);
+            console.log('[KantataSync] Editor value set successfully');
             
             // Rename file to Work Session format: YYYY-MM-DD Work Session
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
