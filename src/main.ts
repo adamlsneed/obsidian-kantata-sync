@@ -3398,40 +3398,56 @@ ${teamMembers}
     }
 
     /**
-     * Get available workspace statuses - uses standard Kantata status IDs
-     * See: https://knowledge.kantata.com/hc/en-us/articles/115005042433-Project-Status
+     * Get available workspace statuses by scanning existing workspaces
+     * This discovers what statuses are actually used in the account
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
-        // Standard Kantata status IDs from official documentation
-        // Note: Account settings may limit which statuses are available
+        const statusMap = new Map<string, StatusOption>();
+        
+        try {
+            // Fetch workspaces to discover available statuses
+            const response = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
+            const workspaces = response.workspaces || {};
+            
+            for (const id of Object.keys(workspaces)) {
+                const ws = workspaces[id];
+                if (ws.status && ws.status.key) {
+                    const key = String(ws.status.key);
+                    if (!statusMap.has(key)) {
+                        statusMap.set(key, {
+                            key: key,
+                            message: ws.status.message || 'Unknown',
+                            color: ws.status.color || 'gray'
+                        });
+                    }
+                }
+            }
+            
+            // Sort by color priority: green, yellow, red, blue, gray
+            const colorOrder: Record<string, number> = { green: 1, yellow: 2, red: 3, blue: 4, gray: 5 };
+            const statuses = Array.from(statusMap.values()).sort((a, b) => {
+                const orderA = colorOrder[a.color] || 6;
+                const orderB = colorOrder[b.color] || 6;
+                if (orderA !== orderB) return orderA - orderB;
+                return a.message.localeCompare(b.message);
+            });
+            
+            if (statuses.length > 0) {
+                console.log(`[KantataSync] Discovered ${statuses.length} statuses from workspaces`);
+                return statuses;
+            }
+        } catch (e) {
+            console.error('[KantataSync] Failed to fetch statuses from workspaces:', e);
+        }
+        
+        // Fallback to common Kantata status IDs
+        console.log('[KantataSync] Using fallback status list');
         return [
-            // Gray - Not yet started
-            { key: '130', message: 'Not Started', color: 'gray' },
-            { key: '115', message: 'In Planning', color: 'gray' },
-            { key: '135', message: 'On Hold', color: 'gray' },
-            { key: '110', message: 'Estimate', color: 'gray' },
-            // Light Green - Close to starting
-            { key: '210', message: 'Okay to Start', color: 'lightgreen' },
-            { key: '215', message: 'Ready', color: 'lightgreen' },
-            { key: '220', message: 'Scheduled', color: 'lightgreen' },
-            // Green - In progress
             { key: '310', message: 'In Progress', color: 'green' },
-            { key: '300', message: 'Active', color: 'green' },
-            { key: '320', message: 'On Track', color: 'green' },
-            { key: '340', message: 'UAT', color: 'green' },
-            // Yellow - In progress with pending action
             { key: '403', message: 'At Risk', color: 'yellow' },
-            { key: '423', message: 'On Hold', color: 'yellow' },
-            { key: '425', message: 'Over Budget', color: 'yellow' },
-            { key: '415', message: 'Late', color: 'yellow' },
-            // Red - Blocked or ended
             { key: '505', message: 'Blocked', color: 'red' },
-            { key: '510', message: 'Canceled', color: 'red' },
-            { key: '525', message: 'On Hold', color: 'red' },
-            // Blue - Finished
             { key: '605', message: 'Completed', color: 'blue' },
-            { key: '600', message: 'Closed', color: 'blue' },
-            { key: '610', message: 'Delivered', color: 'blue' },
+            { key: '130', message: 'Not Started', color: 'gray' },
         ];
     }
 
