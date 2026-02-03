@@ -1502,7 +1502,7 @@ OUTPUT:`;
     /**
      * Full template organization with meeting details
      */
-    async organizeNotesWithTemplate(roughNotes: string, customerName: string): Promise<string> {
+    async organizeNotesWithTemplate(roughNotes: string, customerName: string, originalNotes?: string): Promise<string> {
         const now = new Date();
         const minutes = now.getMinutes();
         const roundedMinutes = Math.round(minutes / 30) * 30;
@@ -1543,12 +1543,25 @@ OUTPUT FORMAT (fill in based on the notes, leave sections empty with "-" if no r
 ---
 
 <u>Internal Notes</u>
-[any internal-only observations]
+[LEAVE EMPTY - original notes added separately]
 
 Generate ONLY the formatted output, no explanations:`;
 
-        const formatted = await this.callAI(prompt);
-        return formatted.trim();
+        let formatted = await this.callAI(prompt);
+        formatted = formatted.trim();
+        
+        // Append original notes to Internal Notes section
+        if (originalNotes) {
+            const internalNotesMarker = '<u>Internal Notes</u>';
+            if (formatted.includes(internalNotesMarker)) {
+                const parts = formatted.split(internalNotesMarker);
+                formatted = parts[0] + internalNotesMarker + '\n' + originalNotes;
+            } else {
+                formatted += '\n\n---\n\n<u>Internal Notes</u>\n' + originalNotes;
+            }
+        }
+        
+        return formatted;
     }
 
     /**
@@ -2635,11 +2648,40 @@ ${teamMembers}
 
         try {
             new Notice('🤖 Organizing notes with AI...');
-            const organized = await this.organizeNotesWithTemplate(body, customerName);
+            
+            // Organize with AI, passing original notes to include in Internal Notes
+            const organized = await this.organizeNotesWithTemplate(body, customerName, body.trim());
             
             // Replace content (keep frontmatter)
             editor.setValue(frontmatter + organized);
-            new Notice('✅ Notes organized!');
+            
+            // Rename file to Work Session format: YYYY-MM-DD Work Session
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const baseName = `${today} Work Session`;
+            const folder = file.parent;
+            
+            if (folder) {
+                // Check if file already has correct name
+                const currentName = file.basename;
+                if (!currentName.includes('Work Session')) {
+                    // Find unique filename
+                    let newName = baseName;
+                    let counter = 2;
+                    while (this.app.vault.getAbstractFileByPath(`${folder.path}/${newName}.md`)) {
+                        newName = `${baseName} ${counter}`;
+                        counter++;
+                    }
+                    
+                    // Rename file
+                    const newPath = `${folder.path}/${newName}.md`;
+                    await this.app.fileManager.renameFile(file, newPath);
+                    new Notice(`✅ Notes organized! Renamed to: ${newName}`);
+                } else {
+                    new Notice('✅ Notes organized!');
+                }
+            } else {
+                new Notice('✅ Notes organized!');
+            }
         } catch (e: any) {
             new Notice(`❌ Failed to organize: ${e.message}`);
         }
