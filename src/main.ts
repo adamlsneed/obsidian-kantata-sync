@@ -498,6 +498,8 @@ export default class KantataSync extends Plugin {
     private ribbonNoteIcon: HTMLElement | null = null;
     private ribbonTimeIcon: HTMLElement | null = null;
     private lastTimeEntry: { id: string; workspaceId: string; data: any } | null = null;
+    private isSyncing = false;  // Prevent duplicate submissions
+    private debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -673,12 +675,11 @@ export default class KantataSync extends Plugin {
             await this.updateRibbonIcons(file);
         }));
 
-        let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
         this.registerEvent(this.app.vault.on('modify', async (file) => {
             const activeFile = this.app.workspace.getActiveFile();
             if (activeFile && file.path === activeFile.path) {
-                if (debounceTimeout) clearTimeout(debounceTimeout);
-                debounceTimeout = setTimeout(async () => {
+                if (this.debounceTimeout) clearTimeout(this.debounceTimeout);
+                this.debounceTimeout = setTimeout(async () => {
                     await this.updateStatusBarForFile(activeFile);
                     await this.updateRibbonIcons(activeFile);
                 }, 1000);
@@ -701,6 +702,10 @@ export default class KantataSync extends Plugin {
 
     onunload(): void {
         this.stopPolling();
+        if (this.debounceTimeout) {
+            clearTimeout(this.debounceTimeout);
+            this.debounceTimeout = null;
+        }
     }
 
     // ==================== POLLING ====================
@@ -2120,7 +2125,12 @@ OUTPUT:`;
             timeEntryData.story_id = storyId;
         }
 
-        console.log('[KantataSync] Creating time entry with data:', JSON.stringify(timeEntryData, null, 2));
+        console.log('[KantataSync] Creating time entry:', { 
+            workspace_id: timeEntryData.workspace_id, 
+            time_in_minutes: timeEntryData.time_in_minutes,
+            date: timeEntryData.date_performed,
+            story_id: timeEntryData.story_id || 'none'
+        });
 
         const response = await this.apiRequest('/time_entries.json', 'POST', {
             time_entry: timeEntryData
@@ -3049,6 +3059,12 @@ ${teamMembers}
     }
 
     async syncCurrentNote(): Promise<void> {
+        // Prevent duplicate submissions
+        if (this.isSyncing) {
+            new Notice('⏳ Sync already in progress...');
+            return;
+        }
+
         const file = this.app.workspace.getActiveFile();
         if (!file) {
             new Notice('No active file');
@@ -3060,23 +3076,28 @@ ${teamMembers}
             return;
         }
 
+        this.isSyncing = true;
         this.updateStatusBar('📝 Note Sync: ⏳', 'Syncing to Kantata...');
         new Notice('Syncing to Kantata...');
 
-        const result = await this.syncNote(file);
+        try {
+            const result = await this.syncNote(file);
 
-        if (result.success && result.updated) {
-            new Notice(`🔄 Updated in Kantata! Post ID: ${result.postId}`);
-            this.updateStatusBar('📝 Note Sync: ✅ Updated', 'Note synced to Kantata');
-        } else if (result.success && result.postId) {
-            new Notice(`✅ Synced to Kantata! Post ID: ${result.postId}`);
-            this.updateStatusBar('📝 Note Sync: ✅ Synced', 'Note synced to Kantata');
-        } else {
-            new Notice(`❌ Sync failed: ${result.error}`);
-            this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Sync failed');
+            if (result.success && result.updated) {
+                new Notice(`🔄 Updated in Kantata! Post ID: ${result.postId}`);
+                this.updateStatusBar('📝 Note Sync: ✅ Updated', 'Note synced to Kantata');
+            } else if (result.success && result.postId) {
+                new Notice(`✅ Synced to Kantata! Post ID: ${result.postId}`);
+                this.updateStatusBar('📝 Note Sync: ✅ Synced', 'Note synced to Kantata');
+            } else {
+                new Notice(`❌ Sync failed: ${result.error}`);
+                this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Sync failed');
+            }
+
+            setTimeout(() => this.updateStatusBarForFile(file), 3000);
+        } finally {
+            this.isSyncing = false;
         }
-
-        setTimeout(() => this.updateStatusBarForFile(file), 3000);
     }
 
     /**
@@ -3675,13 +3696,15 @@ class KantataSettingTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName('Kantata API Token')
             .setDesc('Your Kantata/Mavenlink OAuth token')
-            .addText(text => text
-                .setPlaceholder('Enter your token')
-                .setValue(this.plugin.settings.kantataToken)
-                .onChange(async (value) => {
-                    this.plugin.settings.kantataToken = value;
-                    await this.plugin.saveSettings();
-                }));
+            .addText(text => {
+                text.setPlaceholder('Enter your token')
+                    .setValue(this.plugin.settings.kantataToken)
+                    .onChange(async (value) => {
+                        this.plugin.settings.kantataToken = value;
+                        await this.plugin.saveSettings();
+                    });
+                text.inputEl.type = 'password';
+            });
 
         new Setting(containerEl)
             .setName('API Base URL')
