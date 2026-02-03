@@ -1477,15 +1477,20 @@ export default class KantataSync extends Plugin {
             return this.manualAnalysis(noteContent, availableCategories);
         }
 
-        const prompt = `Convert this work session note into a billable time entry. Return JSON only.
+        const prompt = `Convert this work note into a time entry. Return JSON only.
 
 TASKS (pick one): ${availableCategories.join(' | ')}
 
+CRITICAL - NO HALLUCINATION:
+- ONLY use information explicitly in the note
+- Do NOT make up or invent ANY details
+- If unsure, keep it brief and factual
+
 RULES:
-- summary: What was done (1 line, start with verb, max 100 chars)
+- summary: What was done (1 line, verb, max 100 chars) - ONLY what's stated
 - category: MUST match one task above exactly
-- hours: Estimate from context (meetings, calls = their duration; quick tasks = 0.25-0.5; research/config = 0.5-1). Default to 1 hour unless obviously shorter/longer. Use 15-min increments (0.25, 0.5, 0.75, 1, 1.25, etc.)
-- notes: Key details for billing (2-3 sentences, professional)
+- hours: Default 1 hour. Only change if time is explicitly mentioned.
+- notes: Brief factual summary (2-3 sentences) - NO invented details
 
 NOTE:
 ${noteContent}
@@ -1529,51 +1534,47 @@ JSON:`;
         const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-        const prompt = `You are a professional note editor. Take these rough work notes and organize them into the EXACT template format below.
+        const prompt = `Organize these work notes into the template below.
 
-DO ALL OF THESE:
-1. PROOFREAD: Fix grammar, spelling, make professional
-2. TEMPLATE: Organize into the exact sections below
-3. EXPAND: If notes are brief, expand into full professional sentences
+CRITICAL - DO NOT HALLUCINATE:
+- NEVER make up or invent ANY information
+- ONLY use facts explicitly stated in the notes
+- If info is missing, use "-" (dash) - do NOT guess
+- Rephrase for clarity but do NOT add new information
+- Do NOT assume or infer things not explicitly stated
 
 ROUGH NOTES:
 ${notes}
 
-OUTPUT THIS EXACT FORMAT (fill sections based on content, leave empty if no info):
+OUTPUT FORMAT (use "-" for missing info):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [extract names from notes if mentioned, otherwise leave blank]
+**${customerName} Attendees:** [ONLY if explicitly mentioned, otherwise "-"]
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
-[bullet points of what was completed - expand brief notes into professional sentences]
+[ONLY rephrase what's explicitly stated as done]
 
 **Issues:**
-[bullet points of problems encountered]
+[ONLY problems explicitly mentioned, otherwise "-"]
 
 **Blockers:**
-[anything blocking progress]
+[ONLY if explicitly stated, otherwise "-"]
 
 **Next Session:**
-[when is next meeting if mentioned]
+[ONLY if explicitly mentioned, otherwise "-"]
 
 **Next Steps:**
-[action items going forward]
+[ONLY if explicitly stated, otherwise "-"]
 
 ---
 
 <u>Internal Notes</u>
-[any internal observations, or leave blank]
-
-RULES:
-- Use the EXACT format above with ==, **, and <u> tags
-- Keep all factual information from original
-- Expand brief notes into complete professional sentences
-- Output ONLY the formatted note, no explanations
+-
 
 OUTPUT:`;
 
@@ -1593,45 +1594,52 @@ OUTPUT:`;
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
         const imageNote = images && images.length > 0 
-            ? `\n\nIMAGES ATTACHED: ${images.length} image(s) included. Look at them for attendee names, meeting participants, screenshots, etc.`
+            ? `\n\nIMAGES ATTACHED: ${images.length} image(s). Extract ONLY what you can clearly see (attendee names, etc).`
             : '';
 
-        const prompt = `Organize these rough work notes into a structured format. Extract and categorize the information.${imageNote}
+        const prompt = `Organize these work notes into the template below.${imageNote}
+
+CRITICAL RULES:
+- NEVER make up or invent ANY information
+- ONLY include facts explicitly stated in the notes or clearly visible in images
+- If information is not present, use "-" (dash)
+- Do NOT guess, assume, or fill in blanks creatively
+- Do NOT add details that aren't in the source material
 
 ROUGH NOTES:
 ${roughNotes}
 
-OUTPUT FORMAT (fill in based on the notes AND any attached images, leave sections empty with "-" if no relevant info):
+OUTPUT FORMAT (use "-" if info not explicitly provided):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [extract from notes OR images - look for participant names in screenshots]
+**${customerName} Attendees:** [ONLY names clearly visible in images or mentioned in notes, otherwise "-"]
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
-[bullet points of what was completed/achieved]
+[ONLY what's explicitly stated as done]
 
 **Issues:**
-[bullet points of problems encountered]
+[ONLY problems explicitly mentioned]
 
 **Blockers:**
-[anything blocking progress]
+[ONLY if explicitly stated, otherwise "-"]
 
 **Next Session:**
-[when is the next meeting if mentioned]
+[ONLY if explicitly mentioned, otherwise "-"]
 
 **Next Steps:**
-[action items going forward]
+[ONLY if explicitly stated, otherwise "-"]
 
 ---
 
 <u>Internal Notes</u>
-[LEAVE EMPTY - original notes added separately]
+[LEAVE EMPTY]
 
-Generate ONLY the formatted output, no explanations:`;
+OUTPUT:`;
 
         let formatted = await this.callAI(prompt, images);
         formatted = formatted.trim();
