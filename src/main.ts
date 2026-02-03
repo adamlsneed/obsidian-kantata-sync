@@ -146,7 +146,27 @@ const DEFAULT_SETTINGS: KantataSettings = {
     enableAutoUnarchive: false,
     // AI Time Entry
     enableAiTimeEntry: false,
-    customTemplate: '',
+    customTemplate: `==**Meeting Details**==
+**Customer:** {{customer}}
+**Work Session:** {{date}} @ {{time}} CST
+**Netwrix Attendees:** Adam Sneed
+**{{customer}} Attendees:**
+
+==**Activities/Notes**==
+
+**Accomplishments:**
+
+**Issues:**
+
+**Blockers:**
+
+**Next Session:**
+**Next Steps:**
+
+---
+
+<u>Internal Notes</u>
+`,
     proofreadNotes: true,
     aiProvider: 'anthropic',
     // Anthropic
