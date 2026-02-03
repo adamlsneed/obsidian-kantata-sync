@@ -3149,12 +3149,13 @@ ${teamMembers}
                         await this.deleteTimeEntry(existingEntryId!);
                         new Notice('✅ Time entry deleted');
                         
-                        // Clear frontmatter
+                        // Clear time entry frontmatter (keep note sync status)
                         const activeFile = this.app.workspace.getActiveFile();
                         if (activeFile) {
                             await this.updateFrontmatter(activeFile, {
                                 kantata_time_entry_id: null,
-                                kantata_time_synced_at: null
+                                kantata_time_synced_at: null,
+                                kantata_synced_at: new Date().toISOString() // Preserve note sync status
                             });
                             setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
                             setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
