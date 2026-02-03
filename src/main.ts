@@ -3375,7 +3375,7 @@ ${teamMembers}
                 async (status) => {
                     try {
                         new Notice(`🔄 Changing status to ${status.message}...`);
-                        await this.updateWorkspaceStatus(workspaceId, status.key);
+                        await this.updateWorkspaceStatus(workspaceId, status.message);
                         
                         // Update cache
                         cacheResult.entry.workspaceStatus = status.message;
@@ -3437,13 +3437,16 @@ ${teamMembers}
     /**
      * Update workspace status in Kantata
      */
-    async updateWorkspaceStatus(workspaceId: string, statusKey: string): Promise<void> {
+    async updateWorkspaceStatus(workspaceId: string, statusMessage: string): Promise<void> {
+        // Kantata expects status as an object with message property
         await this.apiRequest(`/workspaces/${workspaceId}.json`, 'PUT', {
             workspace: {
-                status_key: statusKey
+                status: {
+                    message: statusMessage
+                }
             }
         });
-        console.log(`[KantataSync] Updated workspace ${workspaceId} status to: ${statusKey}`);
+        console.log(`[KantataSync] Updated workspace ${workspaceId} status to: ${statusMessage}`);
     }
 
     /**
