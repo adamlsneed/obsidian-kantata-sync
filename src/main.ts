@@ -138,6 +138,13 @@ interface KantataSettings {
     // Manual mode
     manualDefaultHours: number;
     manualDefaultCategory: string;
+    // Menu Options
+    menuShowAiOrganize: boolean;
+    menuShowSyncNote: boolean;
+    menuShowAiTimeEntry: boolean;
+    menuShowManualTimeEntry: boolean;
+    menuShowChangeStatus: boolean;
+    menuShowOpenInKantata: boolean;
 }
 
 const DEFAULT_SETTINGS: KantataSettings = {
@@ -211,6 +218,13 @@ blue:Closed,Cancelled,Cancelled Confirmed,Completed,Delivered,Done,Submitted`,
     // Manual
     manualDefaultHours: 1.0,
     manualDefaultCategory: 'Consulting',
+    // Menu Options (all enabled by default)
+    menuShowAiOrganize: true,
+    menuShowSyncNote: true,
+    menuShowAiTimeEntry: true,
+    menuShowManualTimeEntry: true,
+    menuShowChangeStatus: true,
+    menuShowOpenInKantata: true,
 };
 
 class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
@@ -693,7 +707,7 @@ export default class KantataSync extends Plugin {
             const menu = new Menu();
             
             // 1. AI Organize Notes (top - most common action)
-            if (this.settings.enableAiTimeEntry) {
+            if (this.settings.menuShowAiOrganize && this.settings.enableAiTimeEntry) {
                 menu.addItem((item) => {
                     item.setTitle('✨ AI: Organize Notes')
                         .onClick(async () => {
@@ -708,16 +722,18 @@ export default class KantataSync extends Plugin {
             }
             
             // 2. Note sync - changes label based on state
-            menu.addItem((item) => {
-                const title = isSynced ? '📝 Update Note in Kantata' : '📝 Sync Note to Kantata';
-                item.setTitle(title)
-                    .onClick(async () => {
-                        await this.syncCurrentNote();
-                    });
-            });
+            if (this.settings.menuShowSyncNote) {
+                menu.addItem((item) => {
+                    const title = isSynced ? '📝 Update Note in Kantata' : '📝 Sync Note to Kantata';
+                    item.setTitle(title)
+                        .onClick(async () => {
+                            await this.syncCurrentNote();
+                        });
+                });
+            }
             
             // 3. AI Time Entry - only show create if no entry, otherwise update
-            if (this.settings.enableAiTimeEntry) {
+            if (this.settings.menuShowAiTimeEntry && this.settings.enableAiTimeEntry) {
                 if (hasTimeEntry) {
                     menu.addItem((item) => {
                         item.setTitle('⏱️ AI: Update Time Entry')
@@ -736,30 +752,37 @@ export default class KantataSync extends Plugin {
             }
             
             // 4. Manual time entry - label based on state
-            menu.addItem((item) => {
-                const title = hasTimeEntry ? '⏱️ Edit Time Entry' : '⏱️ Create Time Entry';
-                item.setTitle(title)
-                    .onClick(async () => {
-                        await this.openManualTimeEntryModal();
-                    });
-            });
+            if (this.settings.menuShowManualTimeEntry) {
+                menu.addItem((item) => {
+                    const title = hasTimeEntry ? '⏱️ Edit Time Entry' : '⏱️ Create Time Entry';
+                    item.setTitle(title)
+                        .onClick(async () => {
+                            await this.openManualTimeEntryModal();
+                        });
+                });
+            }
 
             // 5. Change Project Status
-            menu.addItem((item) => {
-                item.setTitle('🎯 Change Project Status')
-                    .onClick(async () => {
-                        await this.openStatusChangeModal();
-                    });
-            });
+            if (this.settings.menuShowChangeStatus) {
+                menu.addItem((item) => {
+                    item.setTitle('🎯 Change Project Status')
+                        .onClick(async () => {
+                            await this.openStatusChangeModal();
+                        });
+                });
+            }
             
-            menu.addSeparator();
-            
-            menu.addItem((item) => {
-                item.setTitle('🔗 Open in Kantata')
-                    .onClick(async () => {
-                        await this.openInKantata();
-                    });
-            });
+            // 6. Open in Kantata
+            if (this.settings.menuShowOpenInKantata) {
+                menu.addSeparator();
+                
+                menu.addItem((item) => {
+                    item.setTitle('🔗 Open in Kantata')
+                        .onClick(async () => {
+                            await this.openInKantata();
+                        });
+                });
+            }
             
             menu.showAtMouseEvent(evt);
         });
@@ -4468,6 +4491,73 @@ class KantataSettingTab extends PluginSettingTab {
                         }
                     }));
         }
+
+        // Menu Options
+        containerEl.createEl('h3', { text: 'Status Bar Menu' });
+        containerEl.createEl('p', { 
+            text: 'Choose which options appear when you click the status bar.',
+            cls: 'setting-item-description'
+        });
+
+        new Setting(containerEl)
+            .setName('AI: Organize Notes')
+            .setDesc('Show option to organize notes with AI template')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.menuShowAiOrganize)
+                .onChange(async (value) => {
+                    this.plugin.settings.menuShowAiOrganize = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Sync/Update Note')
+            .setDesc('Show option to sync note to Kantata')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.menuShowSyncNote)
+                .onChange(async (value) => {
+                    this.plugin.settings.menuShowSyncNote = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('AI: Time Entry')
+            .setDesc('Show option to create/update time entry with AI')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.menuShowAiTimeEntry)
+                .onChange(async (value) => {
+                    this.plugin.settings.menuShowAiTimeEntry = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Manual Time Entry')
+            .setDesc('Show option to create/edit time entry manually')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.menuShowManualTimeEntry)
+                .onChange(async (value) => {
+                    this.plugin.settings.menuShowManualTimeEntry = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Change Project Status')
+            .setDesc('Show option to change workspace status')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.menuShowChangeStatus)
+                .onChange(async (value) => {
+                    this.plugin.settings.menuShowChangeStatus = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Open in Kantata')
+            .setDesc('Show link to open workspace in Kantata')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.menuShowOpenInKantata)
+                .onChange(async (value) => {
+                    this.plugin.settings.menuShowOpenInKantata = value;
+                    await this.plugin.saveSettings();
+                }));
 
         // Cache Management
         containerEl.createEl('h3', { text: 'Cache Management' });
