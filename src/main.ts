@@ -2703,7 +2703,15 @@ ${teamMembers}
     async updateFrontmatter(file: TFile, updates: Record<string, any>): Promise<void> {
         const content = await this.app.vault.read(file);
         const { frontmatter, body } = this.parseFrontmatter(content);
-        Object.assign(frontmatter, updates);
+        
+        // Apply updates, removing keys with null values
+        for (const [key, value] of Object.entries(updates)) {
+            if (value === null || value === undefined) {
+                delete frontmatter[key];
+            } else {
+                frontmatter[key] = value;
+            }
+        }
 
         const fmString = Object.entries(frontmatter)
             .map(([k, v]) => {
