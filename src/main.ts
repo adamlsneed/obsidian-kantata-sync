@@ -3398,9 +3398,10 @@ ${teamMembers}
     }
 
     /**
-     * Get available workspace statuses by scanning:
-     * 1. Current workspace statuses
-     * 2. Status change history (to find statuses used in the past)
+     * Get available workspace statuses - tries multiple sources:
+     * 1. Direct status endpoints (if they exist)
+     * 2. Current workspace statuses  
+     * 3. Status change history
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
         const statusMap = new Map<string, StatusOption>();
@@ -3411,57 +3412,95 @@ ${teamMembers}
             }
         };
         
-        try {
-            // 1. Fetch current workspace statuses
-            const wsResponse = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
-            const workspaces = wsResponse.workspaces || {};
-            
-            for (const id of Object.keys(workspaces)) {
-                const ws = workspaces[id];
-                if (ws.status?.key) {
-                    addStatus(String(ws.status.key), ws.status.message, ws.status.color);
-                }
-            }
-            
-            // 2. Fetch status change history to find additional statuses
+        // Try potential direct endpoints first (may be undocumented)
+        const potentialEndpoints = [
+            '/project_statuses.json',
+            '/account_project_statuses.json', 
+            '/workspace_statuses.json',
+            '/statuses.json',
+        ];
+        
+        for (const endpoint of potentialEndpoints) {
             try {
-                const historyResponse = await this.apiRequest('/workspace_status_changes.json?per_page=200');
-                const changes = historyResponse.workspace_status_changes || {};
-                
-                for (const id of Object.keys(changes)) {
-                    const change = changes[id];
-                    // Add both "from" and "to" statuses
-                    if (change.from_status_key) {
-                        addStatus(change.from_status_key, change.from_message, change.from_color);
+                const response = await this.apiRequest(endpoint);
+                console.log(`[KantataSync] Found statuses endpoint: ${endpoint}`, response);
+                // Try to parse various response formats
+                const statuses = response.project_statuses || response.statuses || 
+                                 response.workspace_statuses || response.account_project_statuses;
+                if (statuses) {
+                    if (Array.isArray(statuses)) {
+                        for (const s of statuses) {
+                            addStatus(String(s.key || s.id), s.message || s.name || s.label, s.color);
+                        }
+                    } else if (typeof statuses === 'object') {
+                        for (const id of Object.keys(statuses)) {
+                            const s = statuses[id];
+                            addStatus(String(s.key || id), s.message || s.name || s.label, s.color);
+                        }
                     }
-                    if (change.to_status_key) {
-                        addStatus(change.to_status_key, change.to_message, change.to_color);
+                    if (statusMap.size > 0) {
+                        console.log(`[KantataSync] Loaded ${statusMap.size} statuses from ${endpoint}`);
+                        break;
                     }
                 }
             } catch (e) {
-                console.log('[KantataSync] Could not fetch status history (may need permissions)');
+                // Endpoint doesn't exist, continue
             }
-            
-            // Sort by color priority: green, light_green, yellow, red, blue, gray
-            const colorOrder: Record<string, number> = { 
-                green: 1, light_green: 2, yellow: 3, red: 4, blue: 5, gray: 6 
-            };
-            const statuses = Array.from(statusMap.values()).sort((a, b) => {
-                const orderA = colorOrder[a.color] || 7;
-                const orderB = colorOrder[b.color] || 7;
-                if (orderA !== orderB) return orderA - orderB;
-                return a.message.localeCompare(b.message);
-            });
-            
-            if (statuses.length > 0) {
-                console.log(`[KantataSync] Discovered ${statuses.length} unique statuses`);
-                return statuses;
-            }
-        } catch (e) {
-            console.error('[KantataSync] Failed to fetch statuses:', e);
         }
         
-        // Fallback to common Kantata status IDs
+        // If no direct endpoint worked, scan workspaces + history
+        if (statusMap.size === 0) {
+            try {
+                // Scan current workspaces
+                const wsResponse = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
+                const workspaces = wsResponse.workspaces || {};
+                
+                for (const id of Object.keys(workspaces)) {
+                    const ws = workspaces[id];
+                    if (ws.status?.key) {
+                        addStatus(String(ws.status.key), ws.status.message, ws.status.color);
+                    }
+                }
+                
+                // Scan status change history
+                try {
+                    const historyResponse = await this.apiRequest('/workspace_status_changes.json?per_page=200');
+                    const changes = historyResponse.workspace_status_changes || {};
+                    
+                    for (const id of Object.keys(changes)) {
+                        const change = changes[id];
+                        if (change.from_status_key) {
+                            addStatus(change.from_status_key, change.from_message, change.from_color);
+                        }
+                        if (change.to_status_key) {
+                            addStatus(change.to_status_key, change.to_message, change.to_color);
+                        }
+                    }
+                } catch (e) {
+                    console.log('[KantataSync] Could not fetch status history');
+                }
+            } catch (e) {
+                console.error('[KantataSync] Failed to scan workspaces:', e);
+            }
+        }
+        
+        // Sort by color priority
+        const colorOrder: Record<string, number> = { 
+            green: 1, light_green: 2, yellow: 3, red: 4, blue: 5, gray: 6 
+        };
+        const statuses = Array.from(statusMap.values()).sort((a, b) => {
+            const orderA = colorOrder[a.color] || 7;
+            const orderB = colorOrder[b.color] || 7;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.message.localeCompare(b.message);
+        });
+        
+        if (statuses.length > 0) {
+            console.log(`[KantataSync] Total statuses available: ${statuses.length}`);
+            return statuses;
+        }
+        
+        // Fallback
         console.log('[KantataSync] Using fallback status list');
         return [
             { key: '310', message: 'In Progress', color: 'green' },
