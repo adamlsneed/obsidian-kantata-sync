@@ -283,7 +283,7 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'create-time-entry',
-            name: 'Create AI time entry for current note',
+            name: 'AI: Create time entry for current note',
             editorCallback: async (editor, view) => {
                 await this.createTimeEntryForCurrentNote();
             }
@@ -2721,6 +2721,9 @@ ${teamMembers}
      * Organize current note using AI template
      */
     async organizeCurrentNote(editor: any): Promise<void> {
+        console.log('[KantataSync] organizeCurrentNote called!');
+        new Notice('🔍 Starting organize...');
+        
         const file = this.app.workspace.getActiveFile();
         if (!file) {
             new Notice('❌ No active file');
