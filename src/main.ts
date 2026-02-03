@@ -1650,16 +1650,7 @@ OUTPUT:`;
         let formatted = await this.callAI(prompt, images);
         formatted = formatted.trim();
         
-        // Append original notes to Internal Notes section
-        if (originalNotes) {
-            const internalNotesMarker = '<u>Internal Notes</u>';
-            if (formatted.includes(internalNotesMarker)) {
-                const parts = formatted.split(internalNotesMarker);
-                formatted = parts[0] + internalNotesMarker + '\n' + originalNotes;
-            } else {
-                formatted += '\n\n---\n\n<u>Internal Notes</u>\n' + originalNotes;
-            }
-        }
+        // Original notes are saved to backup file, not Internal Notes
         
         return formatted;
     }
@@ -2788,6 +2779,24 @@ ${teamMembers}
             } else {
                 new Notice('🤖 Organizing notes with AI...');
                 
+                // Save backup before AI processing
+                const backupFolder = file.parent ? `${file.parent.path}/_Backups` : '_Backups';
+                const backupFileName = `${file.basename}.backup.md`;
+                const backupPath = `${backupFolder}/${backupFileName}`;
+                
+                try {
+                    // Create backup folder if needed
+                    if (!this.app.vault.getAbstractFileByPath(backupFolder)) {
+                        await this.app.vault.createFolder(backupFolder);
+                    }
+                    // Save original content
+                    await this.app.vault.create(backupPath, content);
+                    console.log(`[KantataSync] Backup saved: ${backupPath}`);
+                } catch (e) {
+                    // Backup already exists or failed - continue anyway
+                    console.log(`[KantataSync] Backup skipped: ${e}`);
+                }
+                
                 // Extract and read images from note
                 const imagePaths = this.extractImagePaths(body, file);
                 const images: Array<{ base64: string; mediaType: string }> = [];
@@ -2803,8 +2812,8 @@ ${teamMembers}
                     }
                 }
                 
-                // Organize with AI, passing original notes and images
-                organized = await this.organizeNotesWithTemplate(body, customerName, body.trim(), images);
+                // Organize with AI (no longer passing original for Internal Notes)
+                organized = await this.organizeNotesWithTemplate(body, customerName, undefined, images);
             }
             
             // Replace content (keep frontmatter)
