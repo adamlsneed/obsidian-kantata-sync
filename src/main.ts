@@ -591,13 +591,19 @@ export default class KantataSync extends Plugin {
             
             console.log(`[KantataSync] Sync complete: ${parts.join(', ')}`);
 
-            // Refresh dashboards if enabled
+            // Refresh dashboards if enabled (with delay to prevent layout thrashing)
             if (this.settings.refreshDashboardsOnPoll && this.settings.createDashboardNote) {
                 console.log('[KantataSync] Refreshing dashboards...');
                 let refreshed = 0;
-                for (const [folderName, cached] of Object.entries(this.workspaceCache)) {
+                const entries = Object.entries(this.workspaceCache);
+                for (let i = 0; i < entries.length; i++) {
+                    const [folderName, cached] = entries[i];
                     const success = await this.updateDashboardNote(folderName, cached.workspaceId);
                     if (success) refreshed++;
+                    // Small delay between updates to prevent forced reflow
+                    if (i < entries.length - 1) {
+                        await new Promise(r => setTimeout(r, 50));
+                    }
                 }
                 if (refreshed > 0) {
                     console.log(`[KantataSync] Refreshed ${refreshed} dashboards`);
