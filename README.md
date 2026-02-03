@@ -4,43 +4,110 @@
 
 This is an extended version of [obsidian-kantata-sync](https://github.com/adamlsneed/obsidian-kantata-sync) that adds AI-powered automatic time entry creation when notes sync to Kantata.
 
-## 🆕 AI Time Entry Feature
+## 🆕 AI Features
 
-When you sync a note to Kantata, the plugin can automatically:
-1. **Analyze your note** using Claude AI
-2. **Generate a summary** (1 sentence, action-oriented)
-3. **Estimate hours** based on work described
-4. **Select category** from project's available categories
-5. **Create a time entry** in Kantata with all this data
+### 📝 AI: Organize Notes into Template
 
-### Setup
+Transform rough notes into a structured Work Session template:
 
+**Command:** `KantataSync: AI: Organize notes into template`
+
+**Features:**
+- Converts rough bullet points into professional structured notes
+- Applies Work Session template format automatically
+- **Vision support:** Extracts attendee names from meeting screenshots
+- **Backup:** Original content saved to `_Backups/` folder for undo
+- **Auto-rename:** Renames file to `YYYY-MM-DD Work Session.md`
+- **Empty notes:** Provides blank template instantly (no AI call needed)
+
+**Template Structure:**
+```markdown
+==**Meeting Details**==
+**Customer:** [from folder name]
+**Work Session:** [date] @ [time] CST
+**Netwrix Attendees:** Adam Sneed
+**[Customer] Attendees:** [from images or notes]
+
+==**Activities/Notes**==
+
+**Accomplishments:**
+[AI elaborates on your notes]
+
+**Issues:**
+[if mentioned]
+
+**Blockers:**
+[if mentioned]
+
+**Next Session:**
+[if mentioned]
+
+**Next Steps:**
+[if mentioned]
+
+---
+
+<u>Internal Notes</u>
+```
+
+**Backup & Undo:**
+- Before AI processes, original content is saved to `_Backups/{filename}.backup.md`
+- To undo: copy content from backup file back to the original note
+
+### ⏱️ AI: Create Time Entry
+
+Automatically create Kantata time entries from your notes:
+
+**Command:** `KantataSync: AI: Create time entry for current note`
+
+**Features:**
+- AI analyzes note content and generates summary
+- Smart time estimation (defaults to 1 hour unless specified)
+- Matches content to project tasks/categories
+- Creates time entry with proper markdown formatting
+- **Undo:** Use `KantataSync: Undo last time entry` command
+
+**How It Works:**
+```
+Note Content → AI Analyzes → Time Entry Created
+                   ↓
+          {
+            "summary": "Configured AD integration...",
+            "category": "Implementation/Deployment",
+            "hours": 1.5,
+            "notes": "Worked with customer on..."
+          }
+```
+
+### AI Behavior Rules
+
+- **Accomplishments:** AI elaborates and expands into professional sentences
+- **Other fields:** Only filled if explicitly mentioned in notes
+- **No hallucination:** AI never invents information not in your notes
+- **Image support:** Extracts visible attendee names from screenshots
+- **All fields present:** Template always shows all sections (blank if no content)
+
+## Setup
+
+### Kantata Configuration
+1. Get Kantata API token from your account settings
+2. Enter in plugin settings → **Kantata Token**
+
+### AI Configuration (Optional)
 1. **Enable AI Time Entry** in plugin settings
-2. **Configure Anthropic Auth** (choose one):
-   - **API Key**: Get from [console.anthropic.com](https://console.anthropic.com) → API Keys
-   - **OAuth Token**: Run `claude setup-token` in terminal (for Pro/Max subscribers)
-3. **Test Connection** to verify credentials
-4. **Sync a note** - time entry will be created automatically!
+2. **Choose AI Provider:** Anthropic, OpenAI, Google, OpenRouter, or Ollama
+3. **Enter API Key** for your chosen provider
+4. **Test Connection** to verify credentials
 
-### Authentication Options
+### Supported AI Providers
 
-| Method | Token Format | Best For |
-|--------|-------------|----------|
-| API Key | `sk-ant-api03-...` | Pay-as-you-go users |
-| OAuth Token | `sk-ant-oat01-...` | Claude Pro/Max subscribers |
-
-### How It Works
-
-```
-Note Sync → AI Analyzes Content → Time Entry Created
-                  ↓
-         {
-           "summary": "Configured AD integration...",
-           "category": "Consulting",
-           "hours": 1.5,
-           "notes": "Worked with customer on..."
-         }
-```
+| Provider | Models | API Key Source |
+|----------|--------|----------------|
+| Anthropic | Claude Opus, Sonnet, Haiku | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| OpenAI | GPT-4o, GPT-4 | [platform.openai.com](https://platform.openai.com) |
+| Google | Gemini Pro, Flash | [aistudio.google.com](https://aistudio.google.com) |
+| OpenRouter | Many models | [openrouter.ai](https://openrouter.ai) |
+| Ollama | Local models | No API key needed |
 
 ## ✨ All Features
 
@@ -62,16 +129,28 @@ Note Sync → AI Analyzes Content → Time Entry Created
 ### 🗄️ Auto-Archive & Unarchive
 - Automatically organize projects based on Kantata status
 
-### ⏱️ AI Time Entry (NEW)
-- Automatic time entry creation on note sync
-- AI-powered analysis for summary, hours, category
-- Support for Anthropic API key or OAuth token
+### 🤖 AI Features
+- **Organize notes into template** with vision support
+- **Automatic time entry creation** on demand
+- **Undo time entry** command
+- **Backup original notes** before AI processing
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `AI: Organize notes into template` | Transform rough notes into structured template |
+| `AI: Create time entry for current note` | Create Kantata time entry from note |
+| `Undo last time entry` | Delete the last created time entry |
+| `Sync current note to Kantata` | Sync note to Kantata activity feed |
+| `Link folder to workspace` | Connect folder to Kantata project |
+| `Refresh all dashboards` | Update all project dashboard notes |
 
 ## Installation
 
 1. Copy `main.js` and `manifest.json` to `.obsidian/plugins/kantata-sync/`
 2. Enable in Obsidian Settings → Community plugins
-3. Configure Kantata token and (optionally) Anthropic credentials
+3. Configure Kantata token and (optionally) AI provider credentials
 
 ## Development
 
