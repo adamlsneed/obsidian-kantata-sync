@@ -2721,11 +2721,6 @@ ${teamMembers}
      * Organize current note using AI template
      */
     async organizeCurrentNote(editor: any): Promise<void> {
-        if (!this.hasAiCredentials()) {
-            new Notice(`❌ ${this.settings.aiProvider} credentials not configured`);
-            return;
-        }
-
         const file = this.app.workspace.getActiveFile();
         if (!file) {
             new Notice('❌ No active file');
@@ -2742,8 +2737,17 @@ ${teamMembers}
         const frontmatter = frontmatterMatch ? frontmatterMatch[0] : '';
         const body = frontmatterMatch ? content.slice(frontmatter.length) : content;
 
-        // If empty, just provide blank template
-        const isEmpty = !body.trim() || body.trim().length < 10;
+        // If empty, just provide blank template (no AI needed)
+        const bodyTrimmed = body.trim();
+        const isEmpty = !bodyTrimmed || bodyTrimmed.length < 10;
+        
+        console.log(`[KantataSync] Body length: ${bodyTrimmed.length}, isEmpty: ${isEmpty}`);
+
+        // Only check AI credentials if we need AI (not empty)
+        if (!isEmpty && !this.hasAiCredentials()) {
+            new Notice(`❌ ${this.settings.aiProvider} credentials not configured`);
+            return;
+        }
 
         try {
             let organized: string;
