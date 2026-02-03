@@ -220,15 +220,34 @@ class ManualTimeEntryModal extends Modal {
     private selectedTaskId: string = '';
     private selectedHours: number = 1;
     private notes: string = '';
+    private isEditMode: boolean = false;
+    private existingEntryId: string = '';
     private onSubmit: (taskId: string, hours: number, notes: string) => void;
+    private onUpdate: ((hours: number, notes: string) => void) | null = null;
 
-    constructor(app: App, plugin: KantataSync, workspaceId: string, tasks: TaskOption[], onSubmit: (taskId: string, hours: number, notes: string) => void) {
+    constructor(
+        app: App, 
+        plugin: KantataSync, 
+        workspaceId: string, 
+        tasks: TaskOption[], 
+        onSubmit: (taskId: string, hours: number, notes: string) => void,
+        existingEntry?: { id: string; hours: number; notes: string; storyId: string },
+        onUpdate?: (hours: number, notes: string) => void
+    ) {
         super(app);
         this.plugin = plugin;
         this.workspaceId = workspaceId;
         this.tasks = tasks;
         this.onSubmit = onSubmit;
-        if (tasks.length > 0) {
+        
+        if (existingEntry) {
+            this.isEditMode = true;
+            this.existingEntryId = existingEntry.id;
+            this.selectedHours = existingEntry.hours;
+            this.notes = existingEntry.notes || '';
+            this.selectedTaskId = existingEntry.storyId;
+            this.onUpdate = onUpdate || null;
+        } else if (tasks.length > 0) {
             this.selectedTaskId = tasks[0].id;
         }
     }
@@ -238,7 +257,7 @@ class ManualTimeEntryModal extends Modal {
         contentEl.empty();
         contentEl.addClass('kantata-time-entry-modal');
 
-        contentEl.createEl('h2', { text: 'Manual Time Entry' });
+        contentEl.createEl('h2', { text: this.isEditMode ? 'Edit Time Entry' : 'Manual Time Entry' });
 
         // Task selection
         const taskSetting = contentEl.createDiv({ cls: 'setting-item' });
@@ -301,6 +320,7 @@ class ManualTimeEntryModal extends Modal {
             attr: { rows: '4', placeholder: 'Describe work completed...' }
         });
         notesInput.style.width = '100%';
+        notesInput.value = this.notes; // Set existing value for edit mode
         notesInput.addEventListener('input', (e) => {
             this.notes = (e.target as HTMLTextAreaElement).value;
         });
@@ -315,7 +335,10 @@ class ManualTimeEntryModal extends Modal {
         const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const submitBtn = buttonContainer.createEl('button', { text: 'Create Time Entry', cls: 'mod-cta' });
+        const submitBtn = buttonContainer.createEl('button', { 
+            text: this.isEditMode ? 'Update Time Entry' : 'Create Time Entry', 
+            cls: 'mod-cta' 
+        });
         submitBtn.addEventListener('click', () => {
             if (!this.selectedTaskId) {
                 new Notice('Please select a task');
@@ -325,7 +348,11 @@ class ManualTimeEntryModal extends Modal {
                 new Notice('Please enter notes');
                 return;
             }
-            this.onSubmit(this.selectedTaskId, this.selectedHours, this.notes.trim());
+            if (this.isEditMode && this.onUpdate) {
+                this.onUpdate(this.selectedHours, this.notes.trim());
+            } else {
+                this.onSubmit(this.selectedTaskId, this.selectedHours, this.notes.trim());
+            }
             this.close();
         });
     }
@@ -2885,7 +2912,13 @@ ${teamMembers}
         }
 
         const workspaceId = cacheResult.entry.workspaceId;
-        new Notice('📋 Loading tasks...');
+        
+        // Check for existing time entry
+        const content = await this.app.vault.read(file);
+        const { frontmatter } = this.parseFrontmatter(content);
+        const existingEntryId = frontmatter.kantata_time_entry_id as string | undefined;
+        
+        new Notice(existingEntryId ? '📋 Loading time entry...' : '📋 Loading tasks...');
 
         try {
             // Fetch tasks/stories for this workspace
@@ -2894,6 +2927,24 @@ ${teamMembers}
             if (tasks.length === 0) {
                 new Notice('❌ No tasks found in workspace - create a task in Kantata first');
                 return;
+            }
+
+            // Check if editing existing entry
+            let existingEntry: { id: string; hours: number; notes: string; storyId: string } | undefined;
+            if (existingEntryId) {
+                try {
+                    const entry = await this.getTimeEntry(existingEntryId);
+                    if (entry) {
+                        existingEntry = {
+                            id: existingEntryId,
+                            hours: parseFloat(entry.time_in_minutes) / 60 || 1,
+                            notes: entry.notes || '',
+                            storyId: entry.story_id?.toString() || tasks[0].id
+                        };
+                    }
+                } catch (e) {
+                    console.log('[KantataSync] Could not load existing time entry, showing create form');
+                }
             }
 
             // Open modal
@@ -2936,6 +2987,30 @@ ${teamMembers}
                     } catch (e: any) {
                         new Notice(`❌ Failed to create time entry: ${e.message}`);
                     }
+                },
+                existingEntry,
+                async (hours, notes) => {
+                    // Update callback for edit mode
+                    try {
+                        new Notice('⏱️ Updating time entry...');
+                        await this.updateTimeEntry(existingEntryId!, { 
+                            time_in_minutes: Math.round(hours * 60),
+                            notes: notes 
+                        });
+                        new Notice(`✅ Time entry updated! ${hours} hours`);
+                        
+                        // Update frontmatter timestamp
+                        const activeFile = this.app.workspace.getActiveFile();
+                        if (activeFile) {
+                            await this.updateFrontmatter(activeFile, {
+                                kantata_time_synced_at: new Date().toISOString(),
+                                kantata_synced_at: new Date().toISOString()
+                            });
+                            setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
+                        }
+                    } catch (e: any) {
+                        new Notice(`❌ Failed to update time entry: ${e.message}`);
+                    }
                 }
             );
             modal.open();
@@ -2949,12 +3024,32 @@ ${teamMembers}
      */
     async getWorkspaceTasks(workspaceId: string): Promise<TaskOption[]> {
         const response = await this.apiRequest(`/stories.json?workspace_id=${workspaceId}&per_page=100`);
-        const stories = response.stories || [];
+        // Kantata returns stories as an object keyed by ID, not an array
+        const stories = Object.values(response.stories || {}) as any[];
         
         return stories.map((story: any) => ({
             id: story.id.toString(),
             title: story.title || `Task ${story.id}`
         }));
+    }
+
+    /**
+     * Get time entry details by ID
+     */
+    async getTimeEntry(timeEntryId: string): Promise<any> {
+        const response = await this.apiRequest(`/time_entries/${timeEntryId}.json`);
+        const entries = Object.values(response.time_entries || {}) as any[];
+        return entries[0] || null;
+    }
+
+    /**
+     * Update an existing time entry
+     */
+    async updateTimeEntry(timeEntryId: string, data: { time_in_minutes?: number; notes?: string; story_id?: string }): Promise<void> {
+        await this.apiRequest(`/time_entries/${timeEntryId}.json`, 'PUT', {
+            time_entry: data
+        });
+        console.log(`[KantataSync] Updated time entry: ${timeEntryId}`);
     }
 
     /**
