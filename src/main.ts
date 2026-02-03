@@ -3398,46 +3398,67 @@ ${teamMembers}
     }
 
     /**
-     * Get available workspace statuses by scanning existing workspaces
-     * This discovers what statuses are actually used in the account
+     * Get available workspace statuses by scanning:
+     * 1. Current workspace statuses
+     * 2. Status change history (to find statuses used in the past)
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
         const statusMap = new Map<string, StatusOption>();
         
+        const addStatus = (key: string, message: string, color: string) => {
+            if (key && message && !statusMap.has(key)) {
+                statusMap.set(key, { key, message, color: color || 'gray' });
+            }
+        };
+        
         try {
-            // Fetch workspaces to discover available statuses
-            const response = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
-            const workspaces = response.workspaces || {};
+            // 1. Fetch current workspace statuses
+            const wsResponse = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
+            const workspaces = wsResponse.workspaces || {};
             
             for (const id of Object.keys(workspaces)) {
                 const ws = workspaces[id];
-                if (ws.status && ws.status.key) {
-                    const key = String(ws.status.key);
-                    if (!statusMap.has(key)) {
-                        statusMap.set(key, {
-                            key: key,
-                            message: ws.status.message || 'Unknown',
-                            color: ws.status.color || 'gray'
-                        });
-                    }
+                if (ws.status?.key) {
+                    addStatus(String(ws.status.key), ws.status.message, ws.status.color);
                 }
             }
             
-            // Sort by color priority: green, yellow, red, blue, gray
-            const colorOrder: Record<string, number> = { green: 1, yellow: 2, red: 3, blue: 4, gray: 5 };
+            // 2. Fetch status change history to find additional statuses
+            try {
+                const historyResponse = await this.apiRequest('/workspace_status_changes.json?per_page=200');
+                const changes = historyResponse.workspace_status_changes || {};
+                
+                for (const id of Object.keys(changes)) {
+                    const change = changes[id];
+                    // Add both "from" and "to" statuses
+                    if (change.from_status_key) {
+                        addStatus(change.from_status_key, change.from_message, change.from_color);
+                    }
+                    if (change.to_status_key) {
+                        addStatus(change.to_status_key, change.to_message, change.to_color);
+                    }
+                }
+            } catch (e) {
+                console.log('[KantataSync] Could not fetch status history (may need permissions)');
+            }
+            
+            // Sort by color priority: green, light_green, yellow, red, blue, gray
+            const colorOrder: Record<string, number> = { 
+                green: 1, light_green: 2, yellow: 3, red: 4, blue: 5, gray: 6 
+            };
             const statuses = Array.from(statusMap.values()).sort((a, b) => {
-                const orderA = colorOrder[a.color] || 6;
-                const orderB = colorOrder[b.color] || 6;
+                const orderA = colorOrder[a.color] || 7;
+                const orderB = colorOrder[b.color] || 7;
                 if (orderA !== orderB) return orderA - orderB;
                 return a.message.localeCompare(b.message);
             });
             
             if (statuses.length > 0) {
-                console.log(`[KantataSync] Discovered ${statuses.length} statuses from workspaces`);
+                console.log(`[KantataSync] Discovered ${statuses.length} unique statuses`);
                 return statuses;
             }
         } catch (e) {
-            console.error('[KantataSync] Failed to fetch statuses from workspaces:', e);
+            console.error('[KantataSync] Failed to fetch statuses:', e);
         }
         
         // Fallback to common Kantata status IDs
