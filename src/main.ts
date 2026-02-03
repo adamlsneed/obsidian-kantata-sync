@@ -3793,6 +3793,24 @@ class KantataSettingTab extends PluginSettingTab {
                     }));
         }
 
+        // Test Kantata API connection
+        new Setting(containerEl)
+            .setName('Test Kantata Connection')
+            .setDesc('Verify your Kantata token works')
+            .addButton(button => button
+                .setButtonText('Test')
+                .onClick(async () => {
+                    try {
+                        const response = await this.plugin.apiRequest('/users/me.json');
+                        const users = Object.values(response.users || {}) as any[];
+                        if (users.length > 0) {
+                            new Notice(`✅ Kantata connected as: ${users[0].full_name}`);
+                        }
+                    } catch (e: any) {
+                        new Notice(`❌ Kantata connection failed: ${e.message}`);
+                    }
+                }));
+
         // Cache Management
         containerEl.createEl('h3', { text: 'Cache Management' });
 
@@ -3808,24 +3826,5 @@ class KantataSettingTab extends PluginSettingTab {
                     new Notice('Workspace cache cleared');
                 }));
 
-        // Test Connection
-        containerEl.createEl('h3', { text: 'Test Connection' });
-
-        new Setting(containerEl)
-            .setName('Validate API Connection')
-            .setDesc('Test that your token works')
-            .addButton(button => button
-                .setButtonText('Test')
-                .onClick(async () => {
-                    try {
-                        const response = await this.plugin.apiRequest('/users/me.json');
-                        const users = Object.values(response.users || {}) as any[];
-                        if (users.length > 0) {
-                            new Notice(`✅ Connected as: ${users[0].full_name}`);
-                        }
-                    } catch (e: any) {
-                        new Notice(`❌ Connection failed: ${e.message}`);
-                    }
-                }));
-    }
+        }
 }
