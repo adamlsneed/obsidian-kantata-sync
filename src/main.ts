@@ -89,6 +89,7 @@ interface KantataSettings {
     createDashboardNote: boolean;
     dashboardNoteName: string;
     showWorkspaceStatusInStatusBar: boolean;
+    showRibbonIcons: boolean;
     refreshDashboardsOnPoll: boolean;
     // Auto-archive
     enableAutoArchive: boolean;
@@ -135,6 +136,7 @@ const DEFAULT_SETTINGS: KantataSettings = {
     createDashboardNote: true,
     dashboardNoteName: '_index.md',
     showWorkspaceStatusInStatusBar: true,
+    showRibbonIcons: false,
     refreshDashboardsOnPoll: false,
     // Auto-archive
     enableAutoArchive: false,
@@ -368,6 +370,8 @@ export default class KantataSync extends Plugin {
     workspaceCache: Record<string, WorkspaceCacheEntry> = {};
     statusBarItem!: HTMLElement;
     private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
+    private ribbonNoteIcon: HTMLElement | null = null;
+    private ribbonTimeIcon: HTMLElement | null = null;
     private lastTimeEntry: { id: string; workspaceId: string; data: any } | null = null;
 
     async onload(): Promise<void> {
@@ -375,10 +379,27 @@ export default class KantataSync extends Plugin {
         await this.loadWorkspaceCache();
         await this.cleanupStaleCache();  // Remove entries for deleted folders
 
-        // Ribbon icon
-        this.addRibbonIcon('upload', 'Sync to Kantata', async () => {
-            await this.syncCurrentNote();
-        });
+        // Inject CSS for ribbon icon status colors
+        const styleEl = document.createElement('style');
+        styleEl.id = 'kantata-sync-styles';
+        styleEl.textContent = `
+            .kantata-status-synced .svg-icon { color: var(--color-green) !important; }
+            .kantata-status-pending .svg-icon { color: var(--color-yellow) !important; }
+            .kantata-status-none .svg-icon { color: var(--text-muted) !important; }
+            .kantata-ribbon-note.kantata-status-synced::after,
+            .kantata-ribbon-time.kantata-status-synced::after {
+                content: '✓';
+                position: absolute;
+                bottom: 2px;
+                right: 2px;
+                font-size: 8px;
+                color: var(--color-green);
+            }
+        `;
+        document.head.appendChild(styleEl);
+
+        // Setup ribbon icons if enabled
+        this.setupRibbonIcons();
 
         // Commands
         this.addCommand({
@@ -515,6 +536,7 @@ export default class KantataSync extends Plugin {
         // File event handlers
         this.registerEvent(this.app.workspace.on('file-open', async (file) => {
             await this.updateStatusBarForFile(file);
+            await this.updateRibbonIcons(file);
         }));
 
         let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -524,6 +546,7 @@ export default class KantataSync extends Plugin {
                 if (debounceTimeout) clearTimeout(debounceTimeout);
                 debounceTimeout = setTimeout(async () => {
                     await this.updateStatusBarForFile(activeFile);
+                    await this.updateRibbonIcons(activeFile);
                 }, 1000);
             }
         }));
@@ -1070,6 +1093,83 @@ export default class KantataSync extends Plugin {
         if (tooltip) {
             this.statusBarItem.setAttr('aria-label', tooltip);
         }
+    }
+
+    /**
+     * Setup ribbon icons (if enabled in settings)
+     */
+    setupRibbonIcons(): void {
+        // Remove existing ribbon icons
+        if (this.ribbonNoteIcon) {
+            this.ribbonNoteIcon.remove();
+            this.ribbonNoteIcon = null;
+        }
+        if (this.ribbonTimeIcon) {
+            this.ribbonTimeIcon.remove();
+            this.ribbonTimeIcon = null;
+        }
+
+        if (!this.settings.showRibbonIcons) {
+            return;
+        }
+
+        // Note sync icon
+        this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync Note to Kantata', async () => {
+            await this.syncCurrentNote();
+        });
+        this.ribbonNoteIcon.addClass('kantata-ribbon-note');
+
+        // Time entry icon
+        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'Time Entry (Create/Edit)', async () => {
+            await this.openManualTimeEntryModal();
+        });
+        this.ribbonTimeIcon.addClass('kantata-ribbon-time');
+
+        // Initial update
+        const file = this.app.workspace.getActiveFile();
+        this.updateRibbonIcons(file);
+    }
+
+    /**
+     * Update ribbon icon colors based on file status
+     */
+    async updateRibbonIcons(file: TFile | null): Promise<void> {
+        if (!this.settings.showRibbonIcons) return;
+        if (!this.ribbonNoteIcon || !this.ribbonTimeIcon) return;
+
+        // Default: gray (no file or not in linked folder)
+        let noteStatus: 'synced' | 'pending' | 'none' = 'none';
+        let timeStatus: 'logged' | 'none' = 'none';
+
+        if (file && file.extension === 'md') {
+            try {
+                const content = await this.app.vault.read(file);
+                const { frontmatter } = this.parseFrontmatter(content);
+                
+                const isSynced = frontmatter.kantata_synced === true || frontmatter.kantata_synced === 'true';
+                const syncedAt = frontmatter.kantata_synced_at as string | undefined;
+                const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
+
+                if (isSynced && syncedAt) {
+                    const syncTime = new Date(syncedAt).getTime();
+                    noteStatus = file.stat.mtime > syncTime + 2000 ? 'pending' : 'synced';
+                }
+                
+                timeStatus = hasTimeEntry ? 'logged' : 'none';
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+
+        // Update note icon
+        this.ribbonNoteIcon.removeClass('kantata-status-synced', 'kantata-status-pending', 'kantata-status-none');
+        this.ribbonNoteIcon.addClass(`kantata-status-${noteStatus}`);
+        this.ribbonNoteIcon.setAttr('aria-label', `Sync Note (${noteStatus === 'synced' ? '✅ Synced' : noteStatus === 'pending' ? '🔄 Pending' : '⚪ Not synced'})`);
+
+        // Update time icon
+        this.ribbonTimeIcon.removeClass('kantata-status-logged', 'kantata-status-none');
+        this.ribbonTimeIcon.addClass(`kantata-status-${timeStatus === 'logged' ? 'synced' : 'none'}`);
+        this.ribbonTimeIcon.setAttr('aria-label', `Time Entry (${timeStatus === 'logged' ? '✅ Logged' : '⚪ No entry'})`);
     }
 
     async updateStatusBarForFile(file: TFile | null): Promise<void> {
@@ -3381,6 +3481,17 @@ class KantataSettingTab extends PluginSettingTab {
                     // Refresh status bar
                     const file = this.plugin.app.workspace.getActiveFile();
                     this.plugin.updateStatusBarForFile(file);
+                }));
+
+        new Setting(containerEl)
+            .setName('Show ribbon icons')
+            .setDesc('Display colored icons in the left ribbon for Note sync and Time entry status')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showRibbonIcons)
+                .onChange(async (value) => {
+                    this.plugin.settings.showRibbonIcons = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.setupRibbonIcons();
                 }));
 
         new Setting(containerEl)
