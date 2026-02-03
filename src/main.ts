@@ -3398,50 +3398,41 @@ ${teamMembers}
     }
 
     /**
-     * Get available workspace statuses from settings
-     * Format: color:key=Label,key2=Label2 OR color:Label (key auto-generated)
+     * Get available workspace statuses - uses standard Kantata status IDs
+     * See: https://knowledge.kantata.com/hc/en-us/articles/115005042433-Project-Status
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
-        const statuses: StatusOption[] = [];
-        const customStatuses = this.settings.customStatuses || '';
-        
-        // Parse format: color:status1,status2,status3 or color:key=Label
-        const lines = customStatuses.split('\n').filter(l => l.trim());
-        for (const line of lines) {
-            const colonIdx = line.indexOf(':');
-            if (colonIdx === -1) continue;
-            
-            const color = line.substring(0, colonIdx).trim();
-            const statusList = line.substring(colonIdx + 1);
-            
-            if (color && statusList) {
-                const statusItems = statusList.split(',').map(s => s.trim()).filter(s => s);
-                for (const item of statusItems) {
-                    // Support both "key=Label" and just "Label" formats
-                    if (item.includes('=')) {
-                        const [key, message] = item.split('=').map(s => s.trim());
-                        statuses.push({ key, message, color });
-                    } else {
-                        // Generate key from label: "In Progress" -> "in_progress"
-                        const key = color + '_' + item.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-                        statuses.push({ key, message: item, color });
-                    }
-                }
-            }
-        }
-
-        // Fallback if no custom statuses
-        if (statuses.length === 0) {
-            return [
-                { key: 'green_in_progress', message: 'In Progress', color: 'green' },
-                { key: 'yellow_on_hold', message: 'On Hold', color: 'yellow' },
-                { key: 'red_at_risk', message: 'At Risk', color: 'red' },
-                { key: 'gray_not_started', message: 'Not Started', color: 'gray' },
-                { key: 'blue_completed', message: 'Completed', color: 'blue' },
-            ];
-        }
-
-        return statuses;
+        // Standard Kantata status IDs from official documentation
+        // Note: Account settings may limit which statuses are available
+        return [
+            // Gray - Not yet started
+            { key: '130', message: 'Not Started', color: 'gray' },
+            { key: '115', message: 'In Planning', color: 'gray' },
+            { key: '135', message: 'On Hold', color: 'gray' },
+            { key: '110', message: 'Estimate', color: 'gray' },
+            // Light Green - Close to starting
+            { key: '210', message: 'Okay to Start', color: 'lightgreen' },
+            { key: '215', message: 'Ready', color: 'lightgreen' },
+            { key: '220', message: 'Scheduled', color: 'lightgreen' },
+            // Green - In progress
+            { key: '310', message: 'In Progress', color: 'green' },
+            { key: '300', message: 'Active', color: 'green' },
+            { key: '320', message: 'On Track', color: 'green' },
+            { key: '340', message: 'UAT', color: 'green' },
+            // Yellow - In progress with pending action
+            { key: '403', message: 'At Risk', color: 'yellow' },
+            { key: '423', message: 'On Hold', color: 'yellow' },
+            { key: '425', message: 'Over Budget', color: 'yellow' },
+            { key: '415', message: 'Late', color: 'yellow' },
+            // Red - Blocked or ended
+            { key: '505', message: 'Blocked', color: 'red' },
+            { key: '510', message: 'Canceled', color: 'red' },
+            { key: '525', message: 'On Hold', color: 'red' },
+            // Blue - Finished
+            { key: '605', message: 'Completed', color: 'blue' },
+            { key: '600', message: 'Closed', color: 'blue' },
+            { key: '610', message: 'Delivered', color: 'blue' },
+        ];
     }
 
     /**
