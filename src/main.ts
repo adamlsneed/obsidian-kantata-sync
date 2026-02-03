@@ -1437,27 +1437,48 @@ JSON:`;
     }
 
     /**
-     * Proofread and expand notes using AI
+     * Smart AI enhancement: proofread, apply template if needed, expand if brief
      */
-    async proofreadNotes(notes: string): Promise<string> {
-        const prompt = `Proofread and improve this work note for a professional time entry. 
-Keep the same meaning but:
-- Fix grammar and spelling
-- Make it more professional and clear
-- Expand abbreviations if obvious
-- Keep it concise (2-4 sentences max)
+    async enhanceNotes(notes: string, customerName: string = 'Customer'): Promise<string> {
+        const prompt = `You are a professional note editor. Analyze this work session note and improve it.
 
-Original note:
+DO ALL OF THESE:
+1. PROOFREAD: Fix grammar, spelling, make professional
+2. TEMPLATE: If not already structured, organize into the sections below
+3. EXPAND: If too brief, add reasonable professional detail based on context
+
+INPUT NOTE:
 ${notes}
 
-Improved note (just the text, no quotes or explanation):`;
+OUTPUT FORMAT (use this structure, fill sections based on content, use "-" if no info):
 
-        const improved = await this.callAI(prompt);
-        return improved.trim().replace(/^["']|["']$/g, ''); // Remove any quotes
+**Accomplishments:**
+- [what was completed/achieved - expand with professional detail]
+
+**Issues:**
+- [problems encountered]
+
+**Blockers:**
+- [anything blocking progress]
+
+**Next Steps:**
+- [action items]
+
+RULES:
+- Keep all factual information from the original
+- Expand brief notes into full professional sentences
+- If already well-formatted, just proofread and improve
+- Be concise but complete
+- Output ONLY the formatted note, no explanations
+
+OUTPUT:`;
+
+        const enhanced = await this.callAI(prompt);
+        return enhanced.trim();
     }
 
     /**
-     * Organize rough notes into the standard work session template format
+     * Full template organization with meeting details
      */
     async organizeNotesWithTemplate(roughNotes: string, customerName: string): Promise<string> {
         const now = new Date();
@@ -1648,12 +1669,12 @@ Generate ONLY the formatted output, no explanations:`;
             // Get current user ID
             const userId = await this.getCurrentUserId();
             
-            // Proofread notes if enabled
+            // Enhance notes if enabled (proofread + template + expand)
             let finalNotes = `${analysis.summary}\n\n${analysis.notes}`;
             if (this.settings.proofreadNotes) {
-                console.log('[KantataSync] Proofreading notes...');
-                finalNotes = await this.proofreadNotes(finalNotes);
-                console.log('[KantataSync] Proofread result:', finalNotes);
+                console.log('[KantataSync] Enhancing notes (proofread/template/expand)...');
+                finalNotes = await this.enhanceNotes(finalNotes);
+                console.log('[KantataSync] Enhanced result:', finalNotes);
             }
             
             // Create time entry
@@ -2860,8 +2881,8 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Proofread Notes')
-            .setDesc('AI proofreads and improves note text before submitting (more professional, fixes grammar)')
+            .setName('Enhance Notes')
+            .setDesc('AI proofreads, applies template structure, and expands brief notes before submitting')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.proofreadNotes)
                 .onChange(async (value) => {
