@@ -1,7 +1,7 @@
 {
   "id": "kantata-sync",
   "name": "KantataSync",
-  "version": "26.02.0-beta",
+  "version": "26.02.03",
   "minAppVersion": "1.0.0",
   "description": "Full-featured Kantata integration with AI-powered time entries, note organization, project status management, and workspace sync",
   "author": "Adam Sneed",

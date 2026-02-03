@@ -145,6 +145,7 @@ interface KantataSettings {
     menuShowManualTimeEntry: boolean;
     menuShowChangeStatus: boolean;
     menuShowOpenInKantata: boolean;
+    menuOrder: string[];
 }
 
 const DEFAULT_SETTINGS: KantataSettings = {
@@ -225,6 +226,7 @@ blue:Closed,Cancelled,Cancelled Confirmed,Completed,Delivered,Done,Submitted`,
     menuShowManualTimeEntry: true,
     menuShowChangeStatus: true,
     menuShowOpenInKantata: true,
+    menuOrder: ['aiOrganize', 'syncNote', 'aiTimeEntry', 'manualTimeEntry', 'changeStatus', 'openInKantata'],
 };
 
 class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
@@ -285,7 +287,7 @@ class ManualTimeEntryModal extends Modal {
     private isEditMode: boolean = false;
     private existingEntryId: string = '';
     private onSubmit: (taskId: string, hours: number, notes: string) => void;
-    private onUpdate: ((hours: number, notes: string) => void) | null = null;
+    private onUpdate: ((taskId: string, hours: number, notes: string) => void) | null = null;
     private onDelete: (() => void) | null = null;
 
     constructor(
@@ -295,7 +297,7 @@ class ManualTimeEntryModal extends Modal {
         tasks: TaskOption[], 
         onSubmit: (taskId: string, hours: number, notes: string) => void,
         existingEntry?: { id: string; hours: number; notes: string; storyId: string },
-        onUpdate?: (hours: number, notes: string) => void,
+        onUpdate?: (taskId: string, hours: number, notes: string) => void,
         onDelete?: () => void
     ) {
         super(app);
@@ -454,7 +456,7 @@ class ManualTimeEntryModal extends Modal {
                 return;
             }
             if (this.isEditMode && this.onUpdate) {
-                this.onUpdate(this.selectedHours, this.notes.trim());
+                this.onUpdate(this.selectedTaskId, this.selectedHours, this.notes.trim());
             } else {
                 this.onSubmit(this.selectedTaskId, this.selectedHours, this.notes.trim());
             }
@@ -706,82 +708,105 @@ export default class KantataSync extends Plugin {
             // Show menu with context-aware options
             const menu = new Menu();
             
-            // 1. AI Organize Notes (top - most common action)
-            if (this.settings.menuShowAiOrganize && this.settings.enableAiTimeEntry) {
-                menu.addItem((item) => {
-                    item.setTitle('✨ AI: Organize Notes')
-                        .onClick(async () => {
-                            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-                            if (view?.editor) {
-                                await this.organizeCurrentNote(view.editor);
-                            } else {
-                                new Notice('Open a markdown file first');
-                            }
+            // Menu item builders - each returns true if item was added
+            const menuBuilders: Record<string, () => boolean> = {
+                aiOrganize: () => {
+                    if (this.settings.menuShowAiOrganize && this.settings.enableAiTimeEntry) {
+                        menu.addItem((item) => {
+                            item.setTitle('✨ AI: Organize Notes')
+                                .onClick(async () => {
+                                    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                                    if (view?.editor) {
+                                        await this.organizeCurrentNote(view.editor);
+                                    } else {
+                                        new Notice('Open a markdown file first');
+                                    }
+                                });
                         });
-                });
-            }
-            
-            // 2. Note sync - changes label based on state
-            if (this.settings.menuShowSyncNote) {
-                menu.addItem((item) => {
-                    const title = isSynced ? '📝 Update Note in Kantata' : '📝 Sync Note to Kantata';
-                    item.setTitle(title)
-                        .onClick(async () => {
-                            await this.syncCurrentNote();
+                        return true;
+                    }
+                    return false;
+                },
+                syncNote: () => {
+                    if (this.settings.menuShowSyncNote) {
+                        menu.addItem((item) => {
+                            const title = isSynced ? '📝 Update Note in Kantata' : '📝 Sync Note to Kantata';
+                            item.setTitle(title)
+                                .onClick(async () => {
+                                    await this.syncCurrentNote();
+                                });
                         });
-                });
-            }
-            
-            // 3. AI Time Entry - only show create if no entry, otherwise update
-            if (this.settings.menuShowAiTimeEntry && this.settings.enableAiTimeEntry) {
-                if (hasTimeEntry) {
-                    menu.addItem((item) => {
-                        item.setTitle('⏱️ AI: Update Time Entry')
-                            .onClick(async () => {
-                                await this.updateTimeEntryWithAI();
+                        return true;
+                    }
+                    return false;
+                },
+                aiTimeEntry: () => {
+                    if (this.settings.menuShowAiTimeEntry && this.settings.enableAiTimeEntry) {
+                        if (hasTimeEntry) {
+                            menu.addItem((item) => {
+                                item.setTitle('⏱️ AI: Update Time Entry')
+                                    .onClick(async () => {
+                                        await this.updateTimeEntryWithAI();
+                                    });
                             });
-                    });
-                } else {
-                    menu.addItem((item) => {
-                        item.setTitle('⏱️ AI: Create Time Entry')
-                            .onClick(async () => {
-                                await this.createTimeEntryForCurrentNote();
+                        } else {
+                            menu.addItem((item) => {
+                                item.setTitle('⏱️ AI: Create Time Entry')
+                                    .onClick(async () => {
+                                        await this.createTimeEntryForCurrentNote();
+                                    });
                             });
-                    });
-                }
-            }
-            
-            // 4. Manual time entry - label based on state
-            if (this.settings.menuShowManualTimeEntry) {
-                menu.addItem((item) => {
-                    const title = hasTimeEntry ? '⏱️ Edit Time Entry' : '⏱️ Create Time Entry';
-                    item.setTitle(title)
-                        .onClick(async () => {
-                            await this.openManualTimeEntryModal();
+                        }
+                        return true;
+                    }
+                    return false;
+                },
+                manualTimeEntry: () => {
+                    if (this.settings.menuShowManualTimeEntry) {
+                        menu.addItem((item) => {
+                            const title = hasTimeEntry ? '⏱️ Edit Time Entry' : '⏱️ Create Time Entry';
+                            item.setTitle(title)
+                                .onClick(async () => {
+                                    await this.openManualTimeEntryModal();
+                                });
                         });
-                });
-            }
+                        return true;
+                    }
+                    return false;
+                },
+                changeStatus: () => {
+                    if (this.settings.menuShowChangeStatus) {
+                        menu.addItem((item) => {
+                            item.setTitle('🎯 Change Project Status')
+                                .onClick(async () => {
+                                    await this.openStatusChangeModal();
+                                });
+                        });
+                        return true;
+                    }
+                    return false;
+                },
+                openInKantata: () => {
+                    if (this.settings.menuShowOpenInKantata) {
+                        menu.addSeparator();
+                        menu.addItem((item) => {
+                            item.setTitle('🔗 Open in Kantata')
+                                .onClick(async () => {
+                                    await this.openInKantata();
+                                });
+                        });
+                        return true;
+                    }
+                    return false;
+                },
+            };
 
-            // 5. Change Project Status
-            if (this.settings.menuShowChangeStatus) {
-                menu.addItem((item) => {
-                    item.setTitle('🎯 Change Project Status')
-                        .onClick(async () => {
-                            await this.openStatusChangeModal();
-                        });
-                });
-            }
-            
-            // 6. Open in Kantata
-            if (this.settings.menuShowOpenInKantata) {
-                menu.addSeparator();
-                
-                menu.addItem((item) => {
-                    item.setTitle('🔗 Open in Kantata')
-                        .onClick(async () => {
-                            await this.openInKantata();
-                        });
-                });
+            // Build menu in user-defined order
+            const order = this.settings.menuOrder || Object.keys(menuBuilders);
+            for (const key of order) {
+                if (menuBuilders[key]) {
+                    menuBuilders[key]();
+                }
             }
             
             menu.showAtMouseEvent(evt);
@@ -3579,13 +3604,14 @@ ${teamMembers}
                     }
                 },
                 existingEntry,
-                async (hours, notes) => {
+                async (taskId, hours, notes) => {
                     // Update callback for edit mode
                     try {
                         new Notice('⏱️ Updating time entry...');
                         await this.updateTimeEntry(existingEntryId!, { 
                             time_in_minutes: Math.round(hours * 60),
-                            notes: notes 
+                            notes: notes,
+                            story_id: taskId
                         });
                         new Notice(`✅ Time entry updated! ${hours} hours`);
                         
@@ -4090,8 +4116,13 @@ class KantataSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         new Notice(`✅ Found ${statuses.length} statuses: ${statuses.join(', ')}`);
                         console.log('[KantataSync] Populated allowed statuses:', statuses);
-                        // Refresh the settings display to show updated value
+                        // Refresh the settings display to show updated value (preserve scroll)
+                        const scrollParent = this.containerEl.closest('.vertical-tab-content') || this.containerEl;
+                        const scrollTop = scrollParent.scrollTop;
                         this.display();
+                        requestAnimationFrame(() => {
+                            scrollParent.scrollTop = scrollTop;
+                        });
                     } catch (e: any) {
                         new Notice(`❌ Failed to fetch: ${e.message}`);
                     }
@@ -4247,7 +4278,13 @@ class KantataSettingTab extends PluginSettingTab {
                 .onChange(async (value: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual') => {
                     this.plugin.settings.aiProvider = value;
                     await this.plugin.saveSettings();
-                    this.display(); // Refresh to show provider-specific fields
+                    // Save scroll position before redraw
+                    const scrollParent = this.containerEl.closest('.vertical-tab-content') || this.containerEl;
+                    const scrollTop = scrollParent.scrollTop;
+                    this.display();
+                    requestAnimationFrame(() => {
+                        scrollParent.scrollTop = scrollTop;
+                    });
                 }));
 
         // Provider-specific settings
@@ -4495,69 +4532,132 @@ class KantataSettingTab extends PluginSettingTab {
         // Menu Options
         containerEl.createEl('h3', { text: 'Status Bar Menu' });
         containerEl.createEl('p', { 
-            text: 'Choose which options appear when you click the status bar.',
+            text: 'Choose which options appear when you click the status bar. Drag to reorder.',
             cls: 'setting-item-description'
         });
 
-        new Setting(containerEl)
-            .setName('AI: Organize Notes')
-            .setDesc('Show option to organize notes with AI template')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.menuShowAiOrganize)
-                .onChange(async (value) => {
-                    this.plugin.settings.menuShowAiOrganize = value;
-                    await this.plugin.saveSettings();
-                }));
+        // Menu item definitions
+        const menuItems: Record<string, { name: string; desc: string; key: keyof KantataSettings }> = {
+            aiOrganize: { name: 'AI: Organize Notes', desc: 'Organize notes with AI template', key: 'menuShowAiOrganize' },
+            syncNote: { name: 'Sync/Update Note', desc: 'Sync note to Kantata', key: 'menuShowSyncNote' },
+            aiTimeEntry: { name: 'AI: Time Entry', desc: 'Create/update time entry with AI', key: 'menuShowAiTimeEntry' },
+            manualTimeEntry: { name: 'Manual Time Entry', desc: 'Create/edit time entry manually', key: 'menuShowManualTimeEntry' },
+            changeStatus: { name: 'Change Project Status', desc: 'Change workspace status', key: 'menuShowChangeStatus' },
+            openInKantata: { name: 'Open in Kantata', desc: 'Open workspace in Kantata', key: 'menuShowOpenInKantata' },
+        };
 
-        new Setting(containerEl)
-            .setName('Sync/Update Note')
-            .setDesc('Show option to sync note to Kantata')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.menuShowSyncNote)
-                .onChange(async (value) => {
-                    this.plugin.settings.menuShowSyncNote = value;
-                    await this.plugin.saveSettings();
-                }));
+        // Ensure menuOrder contains all items (migration safety)
+        const allKeys = Object.keys(menuItems);
+        if (!this.plugin.settings.menuOrder || this.plugin.settings.menuOrder.length !== allKeys.length) {
+            this.plugin.settings.menuOrder = allKeys;
+        }
 
-        new Setting(containerEl)
-            .setName('AI: Time Entry')
-            .setDesc('Show option to create/update time entry with AI')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.menuShowAiTimeEntry)
-                .onChange(async (value) => {
-                    this.plugin.settings.menuShowAiTimeEntry = value;
-                    await this.plugin.saveSettings();
-                }));
+        // Create sortable container
+        const sortableContainer = containerEl.createDiv({ cls: 'kantata-menu-sortable' });
+        sortableContainer.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
 
-        new Setting(containerEl)
-            .setName('Manual Time Entry')
-            .setDesc('Show option to create/edit time entry manually')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.menuShowManualTimeEntry)
-                .onChange(async (value) => {
-                    this.plugin.settings.menuShowManualTimeEntry = value;
-                    await this.plugin.saveSettings();
-                }));
+        let draggedEl: HTMLElement | null = null;
 
-        new Setting(containerEl)
-            .setName('Change Project Status')
-            .setDesc('Show option to change workspace status')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.menuShowChangeStatus)
-                .onChange(async (value) => {
-                    this.plugin.settings.menuShowChangeStatus = value;
-                    await this.plugin.saveSettings();
-                }));
+        const renderMenuItems = () => {
+            sortableContainer.empty();
+            
+            for (const itemKey of this.plugin.settings.menuOrder) {
+                const item = menuItems[itemKey];
+                if (!item) continue;
 
-        new Setting(containerEl)
-            .setName('Open in Kantata')
-            .setDesc('Show link to open workspace in Kantata')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.menuShowOpenInKantata)
-                .onChange(async (value) => {
-                    this.plugin.settings.menuShowOpenInKantata = value;
+                const row = sortableContainer.createDiv({ cls: 'kantata-menu-row setting-item' });
+                row.draggable = true;
+                row.dataset.key = itemKey;
+                row.style.cssText = 'display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--background-modifier-border); cursor: grab;';
+
+                // Drag handle
+                const handle = row.createSpan({ cls: 'kantata-drag-handle' });
+                handle.style.cssText = 'margin-right: 12px; color: var(--text-muted); font-size: 16px; user-select: none;';
+                handle.textContent = '⋮⋮';
+
+                // Text container
+                const textContainer = row.createDiv({ cls: 'setting-item-info' });
+                textContainer.style.cssText = 'flex: 1;';
+                textContainer.createDiv({ cls: 'setting-item-name', text: item.name });
+                textContainer.createDiv({ cls: 'setting-item-description', text: item.desc });
+
+                // Toggle
+                const toggleContainer = row.createDiv({ cls: 'setting-item-control' });
+                const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container' });
+                toggle.classList.toggle('is-enabled', this.plugin.settings[item.key] as boolean);
+                toggle.style.cssText = 'cursor: pointer;';
+                toggle.onclick = async (e) => {
+                    e.stopPropagation();
+                    const newValue = !this.plugin.settings[item.key];
+                    (this.plugin.settings as any)[item.key] = newValue;
+                    toggle.classList.toggle('is-enabled', newValue);
                     await this.plugin.saveSettings();
-                }));
+                };
+
+                // Drag events
+                row.ondragstart = (e) => {
+                    draggedEl = row;
+                    row.style.opacity = '0.5';
+                    e.dataTransfer?.setData('text/plain', itemKey);
+                };
+
+                row.ondragend = () => {
+                    row.style.opacity = '1';
+                    draggedEl = null;
+                };
+
+                row.ondragover = (e) => {
+                    e.preventDefault();
+                };
+
+                row.ondragleave = () => {
+                    row.style.borderTop = '';
+                    row.style.borderBottom = '';
+                };
+
+                row.ondrop = async (e) => {
+                    e.preventDefault();
+                    row.style.borderTop = '';
+                    row.style.borderBottom = '';
+                    if (!draggedEl || draggedEl === row) return;
+
+                    const draggedKey = draggedEl.dataset.key!;
+                    const targetKey = row.dataset.key!;
+                    const order = [...this.plugin.settings.menuOrder];
+                    const draggedIdx = order.indexOf(draggedKey);
+                    
+                    // Determine if dropping on top or bottom half
+                    const rect = row.getBoundingClientRect();
+                    const dropOnBottom = e.clientY > rect.top + rect.height / 2;
+
+                    // Remove dragged item first
+                    order.splice(draggedIdx, 1);
+                    
+                    // Find new target index (after removal)
+                    let newTargetIdx = order.indexOf(targetKey);
+                    if (dropOnBottom) {
+                        newTargetIdx += 1; // Insert after target
+                    }
+                    
+                    order.splice(newTargetIdx, 0, draggedKey);
+
+                    this.plugin.settings.menuOrder = order;
+                    await this.plugin.saveSettings();
+                    renderMenuItems();
+                };
+
+                // Also show bottom indicator when hovering lower half
+                row.addEventListener('dragover', (e) => {
+                    if (!draggedEl || draggedEl === row) return;
+                    const rect = row.getBoundingClientRect();
+                    const onBottom = e.clientY > rect.top + rect.height / 2;
+                    row.style.borderTop = onBottom ? '' : '2px solid var(--interactive-accent)';
+                    row.style.borderBottom = onBottom ? '2px solid var(--interactive-accent)' : '';
+                });
+            }
+        };
+
+        renderMenuItems();
 
         // Cache Management
         containerEl.createEl('h3', { text: 'Cache Management' });
