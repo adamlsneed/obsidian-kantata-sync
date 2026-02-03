@@ -3423,16 +3423,6 @@ class KantataSettingTab extends PluginSettingTab {
                     }
                 }));
 
-        new Setting(containerEl)
-            .setName('Include Archived Workspaces')
-            .setDesc('Search archived workspaces when resolving customer names')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.includeArchived)
-                .onChange(async (value) => {
-                    this.plugin.settings.includeArchived = value;
-                    await this.plugin.saveSettings();
-                }));
-
         // Folder Sync Settings
         containerEl.createEl('h3', { text: 'Folder Sync' });
 
