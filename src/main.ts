@@ -3395,14 +3395,30 @@ ${teamMembers}
      * Get available workspace statuses from Kantata
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
-        const response = await this.apiRequest('/workspace_statuses.json');
-        const statuses = Object.values(response.workspace_statuses || {}) as any[];
-        
-        return statuses.map((s: any) => ({
-            key: s.key || s.id?.toString(),
-            message: s.message || s.name || 'Unknown',
-            color: s.color || 'gray'
-        }));
+        // Try to get statuses from account settings
+        try {
+            const response = await this.apiRequest('/account.json?include=workspace_statuses');
+            const account = Object.values(response.accounts || {})[0] as any;
+            if (account?.workspace_statuses) {
+                return account.workspace_statuses.map((s: any) => ({
+                    key: s.key || s.id?.toString(),
+                    message: s.message || s.name || 'Unknown',
+                    color: s.color || 'gray'
+                }));
+            }
+        } catch (e) {
+            console.log('[KantataSync] Could not fetch account statuses, using defaults');
+        }
+
+        // Fallback to common Kantata statuses
+        return [
+            { key: 'green', message: 'Active', color: 'green' },
+            { key: 'yellow', message: 'On Hold', color: 'yellow' },
+            { key: 'red', message: 'At Risk', color: 'red' },
+            { key: 'blue', message: 'Planning', color: 'blue' },
+            { key: 'gray', message: 'Not Started', color: 'gray' },
+            { key: 'complete', message: 'Complete', color: 'green' },
+        ];
     }
 
     /**
