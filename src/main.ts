@@ -1560,7 +1560,7 @@ OUTPUT (markdown formatted):`;
 
 RULES:
 - Accomplishments: ELABORATE and expand into professional sentences
-- OMIT sections with no content entirely (do NOT include Issues, Blockers, Next Session, Next Steps if nothing mentioned)
+- ALWAYS include ALL sections (Issues, Blockers, Next Session, Next Steps) - leave blank if no content
 - NEVER invent information
 
 ROUGH NOTES:
@@ -1579,7 +1579,7 @@ OUTPUT FORMAT (OMIT empty sections):
 **Accomplishments:**
 [ELABORATE: expand work notes into professional sentences]
 
-[Include ONLY if mentioned - otherwise OMIT the section entirely:]
+[ALWAYS include these sections - leave blank if nothing mentioned:]
 **Issues:** [content]
 **Blockers:** [content]
 **Next Session:** [content]
@@ -1615,13 +1615,13 @@ OUTPUT:`;
 RULES:
 - Accomplishments: ELABORATE and expand into professional sentences
 - Attendees: Extract from images if visible, otherwise leave blank
-- OMIT sections entirely if no content (don't include Issues, Blockers, etc. if nothing mentioned)
+- ALWAYS include ALL sections - leave blank if no content (do NOT omit any section)
 - NEVER invent information
 
 ROUGH NOTES:
 ${roughNotes}
 
-OUTPUT FORMAT (OMIT any section with no content):
+OUTPUT FORMAT (include ALL sections, leave blank if no content):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
@@ -1634,7 +1634,7 @@ OUTPUT FORMAT (OMIT any section with no content):
 **Accomplishments:**
 [ELABORATE: expand work notes into full professional sentences]
 
-[ONLY include these sections IF mentioned in notes - otherwise OMIT entirely:]
+[ALWAYS include these sections - leave blank if nothing mentioned:]
 **Issues:** [content]
 **Blockers:** [content]
 **Next Session:** [content]
