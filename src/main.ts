@@ -1526,9 +1526,12 @@ JSON:`;
         try {
             // Get available stories/tasks from workspace
             const stories = await this.fetchBillableStories(workspaceId);
-            const storyTitles = stories.length > 0 
-                ? stories.map(s => s.title)
-                : ['Consulting', 'Development', 'Meeting', 'Documentation', 'Support'];
+            
+            if (stories.length === 0) {
+                throw new Error('No tasks found in workspace. Create at least one task in Kantata to log time against.');
+            }
+            
+            const storyTitles = stories.map(s => s.title);
             
             // Analyze note with AI
             console.log('[KantataSync] Analyzing note for time entry...');
