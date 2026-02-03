@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
+import { App, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
 
 // =============================================================================
 // API Response Types (merged from main plugin v0.5.0 for better type safety)
@@ -700,6 +700,21 @@ export default class KantataSync extends Plugin {
                         await this.openManualTimeEntryModal();
                     });
             });
+
+            // AI Organize (only if AI enabled)
+            if (this.settings.enableAiTimeEntry) {
+                menu.addItem((item) => {
+                    item.setTitle('✨ AI: Organize Notes')
+                        .onClick(async () => {
+                            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                            if (view?.editor) {
+                                await this.organizeCurrentNote(view.editor);
+                            } else {
+                                new Notice('Open a markdown file first');
+                            }
+                        });
+                });
+            }
 
             menu.addItem((item) => {
                 item.setTitle('🎯 Change Project Status')
