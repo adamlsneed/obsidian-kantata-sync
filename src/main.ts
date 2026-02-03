@@ -2742,31 +2742,57 @@ ${teamMembers}
         const frontmatter = frontmatterMatch ? frontmatterMatch[0] : '';
         const body = frontmatterMatch ? content.slice(frontmatter.length) : content;
 
-        if (!body.trim()) {
-            new Notice('❌ No content to organize');
-            return;
-        }
+        // If empty, just provide blank template
+        const isEmpty = !body.trim() || body.trim().length < 10;
 
         try {
-            new Notice('🤖 Organizing notes with AI...');
+            let organized: string;
             
-            // Extract and read images from note
-            const imagePaths = this.extractImagePaths(body, file);
-            const images: Array<{ base64: string; mediaType: string }> = [];
-            
-            if (imagePaths.length > 0) {
-                console.log(`[KantataSync] Found ${imagePaths.length} images in note`);
-                for (const imgPath of imagePaths.slice(0, 5)) { // Limit to 5 images
-                    const imgData = await this.readImageAsBase64(imgPath, file);
-                    if (imgData) {
-                        images.push(imgData);
-                        console.log(`[KantataSync] Loaded image: ${imgPath}`);
+            if (isEmpty) {
+                // Provide blank template
+                new Notice('📝 Creating blank template...');
+                const now = new Date();
+                const roundedMinutes = Math.round(now.getMinutes() / 30) * 30;
+                now.setMinutes(roundedMinutes);
+                const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                
+                organized = `==**Meeting Details**==
+**Customer:** ${customerName}
+**Work Session:** ${dateStr} @ ${timeStr} CST
+**Netwrix Attendees:** Adam Sneed
+**${customerName} Attendees:** 
+
+==**Activities/Notes**==
+
+**Accomplishments:**
+
+
+---
+
+<u>Internal Notes</u>
+`;
+            } else {
+                new Notice('🤖 Organizing notes with AI...');
+                
+                // Extract and read images from note
+                const imagePaths = this.extractImagePaths(body, file);
+                const images: Array<{ base64: string; mediaType: string }> = [];
+                
+                if (imagePaths.length > 0) {
+                    console.log(`[KantataSync] Found ${imagePaths.length} images in note`);
+                    for (const imgPath of imagePaths.slice(0, 5)) { // Limit to 5 images
+                        const imgData = await this.readImageAsBase64(imgPath, file);
+                        if (imgData) {
+                            images.push(imgData);
+                            console.log(`[KantataSync] Loaded image: ${imgPath}`);
+                        }
                     }
                 }
+                
+                // Organize with AI, passing original notes and images
+                organized = await this.organizeNotesWithTemplate(body, customerName, body.trim(), images);
             }
-            
-            // Organize with AI, passing original notes and images
-            const organized = await this.organizeNotesWithTemplate(body, customerName, body.trim(), images);
             
             // Replace content (keep frontmatter)
             editor.setValue(frontmatter + organized);
