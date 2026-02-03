@@ -364,7 +364,8 @@ class ManualTimeEntryModal extends Modal {
 
         // Notes field
         const notesSetting = contentEl.createDiv({ cls: 'setting-item' });
-        notesSetting.createEl('div', { cls: 'setting-item-info' }).createEl('div', { cls: 'setting-item-name', text: 'Notes' });
+        const notesInfo = notesSetting.createEl('div', { cls: 'setting-item-info' });
+        notesInfo.createEl('div', { cls: 'setting-item-name', text: 'Notes' });
         const notesControl = notesSetting.createDiv({ cls: 'setting-item-control' });
         const notesInput = notesControl.createEl('textarea', { 
             cls: 'kantata-notes-input',
@@ -375,6 +376,33 @@ class ManualTimeEntryModal extends Modal {
         notesInput.addEventListener('input', (e) => {
             this.notes = (e.target as HTMLTextAreaElement).value;
         });
+
+        // AI Enhance button (only if AI is enabled)
+        if (this.plugin.settings.enableAiTimeEntry && this.plugin.hasAiCredentials()) {
+            const aiButtonContainer = contentEl.createDiv({ cls: 'setting-item' });
+            aiButtonContainer.style.marginTop = '8px';
+            const aiBtn = aiButtonContainer.createEl('button', { text: '✨ AI: Enhance Notes' });
+            aiBtn.style.width = '100%';
+            aiBtn.addEventListener('click', async () => {
+                if (!this.notes.trim()) {
+                    new Notice('Enter some notes first');
+                    return;
+                }
+                aiBtn.disabled = true;
+                aiBtn.textContent = '✨ Enhancing...';
+                try {
+                    const enhanced = await this.plugin.proofreadForKantata(this.notes);
+                    this.notes = enhanced;
+                    notesInput.value = enhanced;
+                    new Notice('✅ Notes enhanced!');
+                } catch (e: any) {
+                    new Notice(`❌ AI failed: ${e.message}`);
+                } finally {
+                    aiBtn.disabled = false;
+                    aiBtn.textContent = '✨ AI: Enhance Notes';
+                }
+            });
+        }
 
         // Submit button
         const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
@@ -3396,9 +3424,10 @@ ${teamMembers}
                 story_id: storyId || undefined
             });
             
-            // Update frontmatter timestamp
+            // Update frontmatter timestamps (both time and note sync to prevent "out of sync" status)
             await this.updateFrontmatter(file, {
-                kantata_time_synced_at: new Date().toISOString()
+                kantata_time_synced_at: new Date().toISOString(),
+                kantata_synced_at: new Date().toISOString()
             });
             
             new Notice(`✅ Time entry updated! (${analysis.hours}h)`);
