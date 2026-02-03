@@ -383,18 +383,20 @@ export default class KantataSync extends Plugin {
         const styleEl = document.createElement('style');
         styleEl.id = 'kantata-sync-styles';
         styleEl.textContent = `
-            .kantata-status-synced .svg-icon { color: var(--color-green) !important; }
-            .kantata-status-pending .svg-icon { color: var(--color-yellow) !important; }
-            .kantata-status-none .svg-icon { color: var(--text-muted) !important; }
-            .kantata-ribbon-note.kantata-status-synced::after,
-            .kantata-ribbon-time.kantata-status-synced::after {
-                content: '✓';
+            .kantata-ribbon-icon { position: relative; }
+            .kantata-ribbon-icon::after {
+                content: '';
                 position: absolute;
-                bottom: 2px;
-                right: 2px;
-                font-size: 8px;
-                color: var(--color-green);
+                bottom: 4px;
+                right: 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                border: 1px solid var(--background-primary);
             }
+            .kantata-status-synced::after { background-color: #4ade80 !important; }
+            .kantata-status-pending::after { background-color: #facc15 !important; }
+            .kantata-status-none::after { background-color: #6b7280 !important; }
         `;
         document.head.appendChild(styleEl);
 
@@ -1117,13 +1119,13 @@ export default class KantataSync extends Plugin {
         this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync Note to Kantata', async () => {
             await this.syncCurrentNote();
         });
-        this.ribbonNoteIcon.addClass('kantata-ribbon-note');
+        this.ribbonNoteIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-note');
 
         // Time entry icon
         this.ribbonTimeIcon = this.addRibbonIcon('clock', 'Time Entry (Create/Edit)', async () => {
             await this.openManualTimeEntryModal();
         });
-        this.ribbonTimeIcon.addClass('kantata-ribbon-time');
+        this.ribbonTimeIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-time');
 
         // Initial update
         const file = this.app.workspace.getActiveFile();
