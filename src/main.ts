@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Menu, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
+import { App, FuzzySuggestModal, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
 
 // Folder suggester for autocomplete
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
