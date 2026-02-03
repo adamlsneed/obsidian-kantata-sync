@@ -2761,12 +2761,18 @@ ${teamMembers}
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** 
+**${customerName} Attendees:**
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
 
+**Issues:**
+
+**Blockers:**
+
+**Next Session:**
+**Next Steps:**
 
 ---
 
