@@ -25,7 +25,7 @@ Transform rough notes into a structured Work Session template:
 ==**Meeting Details**==
 **Customer:** [from folder name]
 **Work Session:** [date] @ [time] CST
-**Netwrix Attendees:** Adam Sneed
+**Our Attendees:** [your name]
 **[Customer] Attendees:** [from images or notes]
 
 ==**Activities/Notes**==

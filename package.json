@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "esbuild src/main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --watch",
     "build": "esbuild src/main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --minify",
-    "deploy": "npm run build && cp main.js manifest.json \"$HOME/Library/CloudStorage/OneDrive-NetwrixCorporation/Netwrix Documents/Obsidian/Netwrix/Customer Notes/.obsidian/plugins/kantata-sync/\""
+    "deploy": "npm run build && echo 'Copy main.js and manifest.json to your Obsidian vault plugins/kantata-sync/ folder'"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

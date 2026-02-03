@@ -146,7 +146,7 @@ npm run build
 ==**Meeting Details**==
 **Customer:** [folder name]
 **Work Session:** [date] @ [time] CST
-**Netwrix Attendees:** Adam Sneed
+**Our Attendees:** [your name]
 **[Customer] Attendees:** [from notes/images]
 
 ==**Activities/Notes**==
