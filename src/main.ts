@@ -1146,17 +1146,29 @@ export default class KantataSync extends Plugin {
                 })
             });
         } catch (e: any) {
-            // Extract error details from response
-            const status = e.status || 'unknown';
+            // Extract error details - Obsidian requestUrl puts response in different places
+            const status = e.status || e.httpStatus || 'unknown';
             let errorMsg = `Anthropic API error (${status})`;
-            try {
-                const errorData = JSON.parse(e.message || '{}');
-                if (errorData.error?.message) {
-                    errorMsg = `${errorMsg}: ${errorData.error.message}`;
+            
+            // Try to get error from response body
+            const responseText = e.response || e.text || e.body || '';
+            if (responseText) {
+                try {
+                    const errorData = typeof responseText === 'string' ? JSON.parse(responseText) : responseText;
+                    if (errorData.error?.message) {
+                        errorMsg = `${errorMsg}: ${errorData.error.message}`;
+                    } else if (errorData.message) {
+                        errorMsg = `${errorMsg}: ${errorData.message}`;
+                    }
+                } catch {
+                    errorMsg = `${errorMsg}: ${responseText.slice(0, 200)}`;
                 }
-            } catch {
-                if (e.message) errorMsg = `${errorMsg}: ${e.message}`;
+            } else if (e.message && e.message !== 'Request failed') {
+                errorMsg = `${errorMsg}: ${e.message}`;
             }
+            
+            // Log full error for debugging
+            console.error('[KantataSync] Anthropic error:', JSON.stringify(e, null, 2));
             throw new Error(errorMsg);
         }
 
