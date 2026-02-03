@@ -664,7 +664,22 @@ export default class KantataSync extends Plugin {
             // Show menu with context-aware options
             const menu = new Menu();
             
-            // Note sync - changes label based on state
+            // 1. AI Organize Notes (top - most common action)
+            if (this.settings.enableAiTimeEntry) {
+                menu.addItem((item) => {
+                    item.setTitle('✨ AI: Organize Notes')
+                        .onClick(async () => {
+                            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                            if (view?.editor) {
+                                await this.organizeCurrentNote(view.editor);
+                            } else {
+                                new Notice('Open a markdown file first');
+                            }
+                        });
+                });
+            }
+            
+            // 2. Note sync - changes label based on state
             menu.addItem((item) => {
                 const title = isSynced ? '📝 Update Note in Kantata' : '📝 Sync Note to Kantata';
                 item.setTitle(title)
@@ -673,7 +688,7 @@ export default class KantataSync extends Plugin {
                     });
             });
             
-            // AI Time Entry - only show create if no entry, otherwise update
+            // 3. AI Time Entry - only show create if no entry, otherwise update
             if (this.settings.enableAiTimeEntry) {
                 if (hasTimeEntry) {
                     menu.addItem((item) => {
@@ -692,7 +707,7 @@ export default class KantataSync extends Plugin {
                 }
             }
             
-            // Manual time entry - label based on state
+            // 4. Manual time entry - label based on state
             menu.addItem((item) => {
                 const title = hasTimeEntry ? '⏱️ Edit Time Entry' : '⏱️ Create Time Entry';
                 item.setTitle(title)
@@ -701,21 +716,7 @@ export default class KantataSync extends Plugin {
                     });
             });
 
-            // AI Organize (only if AI enabled)
-            if (this.settings.enableAiTimeEntry) {
-                menu.addItem((item) => {
-                    item.setTitle('✨ AI: Organize Notes')
-                        .onClick(async () => {
-                            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-                            if (view?.editor) {
-                                await this.organizeCurrentNote(view.editor);
-                            } else {
-                                new Notice('Open a markdown file first');
-                            }
-                        });
-                });
-            }
-
+            // 5. Change Project Status
             menu.addItem((item) => {
                 item.setTitle('🎯 Change Project Status')
                     .onClick(async () => {
