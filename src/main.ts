@@ -99,6 +99,7 @@ interface KantataSettings {
     // AI Time Entry
     enableAiTimeEntry: boolean;
     customTemplate: string;
+    customStatuses: string;
     proofreadNotes: boolean;
     aiProvider: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual';
     // Anthropic
@@ -167,6 +168,11 @@ const DEFAULT_SETTINGS: KantataSettings = {
 
 <u>Internal Notes</u>
 `,
+    customStatuses: `gray:Approved,Confirmed,Contingent,Okay to Start,Pending,Ready,Scheduled,Tech Setup,Not Started
+green:In Progress,UAT
+yellow:At Risk,Issue,On Hold,Over Budget,Quality Control
+red:Alert,Blocked,Cancelled - Change Order,Concern,Suspended,Terminated,Rejected
+blue:Closed,Cancelled,Cancelled Confirmed,Completed,Delivered,Done,Submitted`,
     proofreadNotes: true,
     aiProvider: 'anthropic',
     // Anthropic
@@ -3392,33 +3398,40 @@ ${teamMembers}
     }
 
     /**
-     * Get available workspace statuses from Kantata
+     * Get available workspace statuses from settings
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
-        // Try to get statuses from account settings
-        try {
-            const response = await this.apiRequest('/account.json?include=workspace_statuses');
-            const account = Object.values(response.accounts || {})[0] as any;
-            if (account?.workspace_statuses) {
-                return account.workspace_statuses.map((s: any) => ({
-                    key: s.key || s.id?.toString(),
-                    message: s.message || s.name || 'Unknown',
-                    color: s.color || 'gray'
-                }));
+        const statuses: StatusOption[] = [];
+        const customStatuses = this.settings.customStatuses || '';
+        
+        // Parse format: color:status1,status2,status3
+        const lines = customStatuses.split('\n').filter(l => l.trim());
+        for (const line of lines) {
+            const [color, statusList] = line.split(':');
+            if (color && statusList) {
+                const statusNames = statusList.split(',').map(s => s.trim()).filter(s => s);
+                for (const name of statusNames) {
+                    statuses.push({
+                        key: name.toLowerCase().replace(/\s+/g, '_'),
+                        message: name,
+                        color: color.trim()
+                    });
+                }
             }
-        } catch (e) {
-            console.log('[KantataSync] Could not fetch account statuses, using defaults');
         }
 
-        // Fallback to common Kantata statuses
-        return [
-            { key: 'green', message: 'Active', color: 'green' },
-            { key: 'yellow', message: 'On Hold', color: 'yellow' },
-            { key: 'red', message: 'At Risk', color: 'red' },
-            { key: 'blue', message: 'Planning', color: 'blue' },
-            { key: 'gray', message: 'Not Started', color: 'gray' },
-            { key: 'complete', message: 'Complete', color: 'green' },
-        ];
+        // Fallback if no custom statuses
+        if (statuses.length === 0) {
+            return [
+                { key: 'in_progress', message: 'In Progress', color: 'green' },
+                { key: 'on_hold', message: 'On Hold', color: 'yellow' },
+                { key: 'at_risk', message: 'At Risk', color: 'red' },
+                { key: 'not_started', message: 'Not Started', color: 'gray' },
+                { key: 'completed', message: 'Completed', color: 'blue' },
+            ];
+        }
+
+        return statuses;
     }
 
     /**
@@ -4043,7 +4056,7 @@ class KantataSettingTab extends PluginSettingTab {
         // Custom template
         new Setting(containerEl)
             .setName('Custom Template')
-            .setDesc('Custom template for notes. Use {{customer}}, {{date}}, {{time}} as placeholders. Leave empty for default.')
+            .setDesc('Custom template for notes. Use {{customer}}, {{date}}, {{time}} as placeholders.')
             .addTextArea(text => {
                 text.setPlaceholder('Leave empty for default template...')
                     .setValue(this.plugin.settings.customTemplate)
@@ -4052,6 +4065,23 @@ class KantataSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     });
                 text.inputEl.rows = 10;
+                text.inputEl.style.width = '100%';
+                text.inputEl.style.fontFamily = 'monospace';
+                text.inputEl.style.fontSize = '12px';
+            });
+
+        // Custom statuses
+        new Setting(containerEl)
+            .setName('Project Statuses')
+            .setDesc('Define statuses by color. Format: color:status1,status2,status3 (one color per line)')
+            .addTextArea(text => {
+                text.setPlaceholder('gray:Not Started,Pending\ngreen:In Progress\nyellow:On Hold\nred:At Risk\nblue:Completed')
+                    .setValue(this.plugin.settings.customStatuses)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customStatuses = value;
+                        await this.plugin.saveSettings();
+                    });
+                text.inputEl.rows = 6;
                 text.inputEl.style.width = '100%';
                 text.inputEl.style.fontFamily = 'monospace';
                 text.inputEl.style.fontSize = '12px';
