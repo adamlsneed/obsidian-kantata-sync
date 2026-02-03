@@ -1078,32 +1078,40 @@ export default class KantataSync extends Plugin {
             options.body = JSON.stringify(body);
         }
 
-        const response = await requestUrl({ ...options, throw: false });
-        
-        if (response.status >= 400) {
-            let errorMsg = `Kantata API error (${response.status})`;
+        try {
+            const response = await requestUrl(options);
+            return response.json;
+        } catch (e: any) {
+            const status = e.status || 'unknown';
+            let errorMsg = `Kantata API error (${status})`;
+            
+            // Try to parse error response body
             try {
-                const errorData = response.json;
+                const errorText = e.response || e.text || e.message || '';
+                const errorData = typeof errorText === 'string' && errorText.startsWith('{') 
+                    ? JSON.parse(errorText) 
+                    : errorText;
                 console.error('[KantataSync] Kantata error response:', errorData);
+                
                 if (errorData?.errors) {
-                    // Kantata returns errors as array or object
-                    const errors = Array.isArray(errorData.errors) 
-                        ? errorData.errors.join(', ')
+                    // Kantata errors can be array of strings or objects
+                    const errors = Array.isArray(errorData.errors)
+                        ? errorData.errors.map((err: any) => 
+                            typeof err === 'string' ? err : (err.message || JSON.stringify(err))
+                          ).join(', ')
                         : JSON.stringify(errorData.errors);
                     errorMsg = `${errorMsg}: ${errors}`;
-                } else if (errorData?.message) {
-                    errorMsg = `${errorMsg}: ${errorData.message}`;
                 }
             } catch {
-                errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) || 'Unknown error'}`;
+                // Couldn't parse, use raw message
+                if (e.message) errorMsg = `${errorMsg}: ${e.message}`;
             }
-            if (response.status === 401) {
+            
+            if (status === 401) {
                 throw new Error('Authentication failed. Check your Kantata token.');
             }
             throw new Error(errorMsg);
         }
-        
-        return response.json;
     }
 
     // ==================== AI TIME ENTRY ====================
