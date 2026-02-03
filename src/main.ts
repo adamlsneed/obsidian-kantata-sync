@@ -257,7 +257,7 @@ class ManualTimeEntryModal extends Modal {
         contentEl.empty();
         contentEl.addClass('kantata-time-entry-modal');
 
-        contentEl.createEl('h2', { text: this.isEditMode ? 'Edit Time Entry' : 'Manual Time Entry' });
+        contentEl.createEl('h2', { text: this.isEditMode ? 'Edit Time Entry' : 'Create Time Entry' });
 
         // Task selection
         const taskSetting = contentEl.createDiv({ cls: 'setting-item' });
@@ -455,7 +455,7 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'manual-time-entry',
-            name: 'Manual: Create time entry',
+            name: 'Time Entry (Create/Edit)',
             callback: async () => {
                 await this.openManualTimeEntryModal();
             }
@@ -493,7 +493,7 @@ export default class KantataSync extends Plugin {
             }
             
             menu.addItem((item) => {
-                item.setTitle('⏱️ Manual: Create Time Entry')
+                item.setTitle('⏱️ Time Entry (Create/Edit)')
                     .onClick(async () => {
                         await this.openManualTimeEntryModal();
                     });
