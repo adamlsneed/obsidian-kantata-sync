@@ -1814,13 +1814,11 @@ OUTPUT:`;
             // Get current user ID
             const userId = await this.getCurrentUserId();
             
-            // For Kantata: just clean professional text, NO template
+            // For Kantata: always clean to plain text (Kantata doesn't render markdown)
             let finalNotes = `${analysis.summary}\n\n${analysis.notes}`;
-            if (this.settings.proofreadNotes) {
-                console.log('[KantataSync] Proofreading notes for Kantata...');
-                finalNotes = await this.proofreadForKantata(finalNotes);
-                console.log('[KantataSync] Proofread result:', finalNotes);
-            }
+            console.log('[KantataSync] Proofreading notes for Kantata...');
+            finalNotes = await this.proofreadForKantata(finalNotes);
+            console.log('[KantataSync] Proofread result:', finalNotes);
             
             // Create time entry
             const today = new Date().toISOString().split('T')[0];
@@ -3129,16 +3127,6 @@ class KantataSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.enableAiTimeEntry)
                 .onChange(async (value) => {
                     this.plugin.settings.enableAiTimeEntry = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Enhance Notes')
-            .setDesc('AI proofreads, applies template structure, and expands brief notes before submitting')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.proofreadNotes)
-                .onChange(async (value) => {
-                    this.plugin.settings.proofreadNotes = value;
                     await this.plugin.saveSettings();
                 }));
 
