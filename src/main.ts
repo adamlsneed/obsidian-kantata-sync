@@ -402,6 +402,70 @@ class ManualTimeEntryModal extends Modal {
     }
 }
 
+// Status Change Modal
+interface StatusOption {
+    key: string;
+    message: string;
+    color: string;
+}
+
+class StatusChangeModal extends Modal {
+    private statuses: StatusOption[] = [];
+    private currentStatus: string = '';
+    private onSelect: (status: StatusOption) => void;
+
+    constructor(app: App, statuses: StatusOption[], currentStatus: string, onSelect: (status: StatusOption) => void) {
+        super(app);
+        this.statuses = statuses;
+        this.currentStatus = currentStatus;
+        this.onSelect = onSelect;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        
+        contentEl.createEl('h2', { text: 'Change Project Status' });
+        contentEl.createEl('p', { text: `Current: ${this.currentStatus}`, cls: 'setting-item-description' });
+
+        const listEl = contentEl.createDiv({ cls: 'kantata-status-list' });
+        listEl.style.display = 'flex';
+        listEl.style.flexDirection = 'column';
+        listEl.style.gap = '8px';
+        listEl.style.marginTop = '16px';
+
+        for (const status of this.statuses) {
+            const btn = listEl.createEl('button', { 
+                text: `${this.getStatusEmoji(status.color)} ${status.message}`,
+                cls: status.message === this.currentStatus ? 'mod-cta' : ''
+            });
+            btn.style.padding = '8px 16px';
+            btn.style.textAlign = 'left';
+            btn.addEventListener('click', () => {
+                this.onSelect(status);
+                this.close();
+            });
+        }
+    }
+
+    getStatusEmoji(color: string): string {
+        switch (color?.toLowerCase()) {
+            case 'green': return '🟢';
+            case 'yellow': return '🟡';
+            case 'red': return '🔴';
+            case 'blue': return '🔵';
+            case 'orange': return '🟠';
+            case 'purple': return '🟣';
+            default: return '⚪';
+        }
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 export default class KantataSync extends Plugin {
     settings!: KantataSettings;
     workspaceCache: Record<string, WorkspaceCacheEntry> = {};
@@ -556,6 +620,13 @@ export default class KantataSync extends Plugin {
                 item.setTitle('⏱️ Time Entry (Create/Edit)')
                     .onClick(async () => {
                         await this.openManualTimeEntryModal();
+                    });
+            });
+
+            menu.addItem((item) => {
+                item.setTitle('🎯 Change Project Status')
+                    .onClick(async () => {
+                        await this.openStatusChangeModal();
                     });
             });
             
@@ -3259,6 +3330,91 @@ ${teamMembers}
             time_entry: data
         });
         console.log(`[KantataSync] Updated time entry: ${timeEntryId}`);
+    }
+
+    /**
+     * Open modal to change workspace status
+     */
+    async openStatusChangeModal(): Promise<void> {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+            new Notice('❌ No active file - open a note in a linked folder');
+            return;
+        }
+
+        const cacheResult = this.findCacheEntry(file);
+        if (!cacheResult) {
+            new Notice('❌ Folder not linked to Kantata workspace');
+            return;
+        }
+
+        const workspaceId = cacheResult.entry.workspaceId;
+        const currentStatus = cacheResult.entry.workspaceStatus || 'Unknown';
+        
+        new Notice('🎯 Loading statuses...');
+
+        try {
+            // Fetch available statuses from Kantata
+            const statuses = await this.getWorkspaceStatuses();
+            
+            if (statuses.length === 0) {
+                new Notice('❌ No statuses available');
+                return;
+            }
+
+            const modal = new StatusChangeModal(
+                this.app,
+                statuses,
+                currentStatus,
+                async (status) => {
+                    try {
+                        new Notice(`🔄 Changing status to ${status.message}...`);
+                        await this.updateWorkspaceStatus(workspaceId, status.key);
+                        
+                        // Update cache
+                        cacheResult.entry.workspaceStatus = status.message;
+                        cacheResult.entry.workspaceStatusColor = status.color;
+                        await this.saveWorkspaceCache();
+                        
+                        // Refresh status bar
+                        await this.updateStatusBarForFile(file);
+                        
+                        new Notice(`✅ Status changed to ${status.message}`);
+                    } catch (e: any) {
+                        new Notice(`❌ Failed to change status: ${e.message}`);
+                    }
+                }
+            );
+            modal.open();
+        } catch (e: any) {
+            new Notice(`❌ Failed to load statuses: ${e.message}`);
+        }
+    }
+
+    /**
+     * Get available workspace statuses from Kantata
+     */
+    async getWorkspaceStatuses(): Promise<StatusOption[]> {
+        const response = await this.apiRequest('/workspace_statuses.json');
+        const statuses = Object.values(response.workspace_statuses || {}) as any[];
+        
+        return statuses.map((s: any) => ({
+            key: s.key || s.id?.toString(),
+            message: s.message || s.name || 'Unknown',
+            color: s.color || 'gray'
+        }));
+    }
+
+    /**
+     * Update workspace status in Kantata
+     */
+    async updateWorkspaceStatus(workspaceId: string, statusKey: string): Promise<void> {
+        await this.apiRequest(`/workspaces/${workspaceId}.json`, 'PUT', {
+            workspace: {
+                status_key: statusKey
+            }
+        });
+        console.log(`[KantataSync] Updated workspace ${workspaceId} status to: ${statusKey}`);
     }
 
     /**
