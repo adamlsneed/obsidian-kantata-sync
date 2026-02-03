@@ -1,5 +1,23 @@
 import { App, FuzzySuggestModal, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
 
+// =============================================================================
+// API Response Types (merged from main plugin v0.5.0 for better type safety)
+// =============================================================================
+interface KantataApiError {
+    status?: number;
+    message: string;
+    originalError?: unknown;
+}
+
+interface ApiResponse<T> {
+    [key: string]: T;
+}
+
+interface PostResponse {
+    posts?: Record<string, { id: string; updated_at: string; message: string }>;
+    results?: Array<{ id: string }>;
+}
+
 // Folder suggester for autocomplete
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
     private inputEl: HTMLInputElement;
@@ -1520,8 +1538,17 @@ export default class KantataSync extends Plugin {
                 if (e.message) errorMsg = `${errorMsg}: ${e.message}`;
             }
             
+            // Enhanced error handling with specific status codes (merged from main v0.5.0)
             if (status === 401) {
-                throw new Error('Authentication failed. Check your Kantata token.');
+                throw new Error('Authentication failed. Check your Kantata token in Settings.');
+            } else if (status === 403) {
+                throw new Error('Permission denied. Your token may not have access to this resource.');
+            } else if (status === 404) {
+                throw new Error('Resource not found. It may have been deleted.');
+            } else if (status === 429) {
+                throw new Error('Rate limit exceeded. Please wait before trying again.');
+            } else if (status >= 500) {
+                throw new Error('Kantata server error. Please try again later.');
             }
             throw new Error(errorMsg);
         }
