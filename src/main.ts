@@ -2948,7 +2948,7 @@ ${teamMembers}
      * Get tasks/stories for a workspace
      */
     async getWorkspaceTasks(workspaceId: string): Promise<TaskOption[]> {
-        const response = await this.kantataRequest(`/stories.json?workspace_id=${workspaceId}&per_page=100`);
+        const response = await this.apiRequest(`/stories.json?workspace_id=${workspaceId}&per_page=100`);
         const stories = response.stories || [];
         
         return stories.map((story: any) => ({
