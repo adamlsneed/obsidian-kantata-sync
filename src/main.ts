@@ -97,6 +97,7 @@ interface KantataSettings {
     enableAutoUnarchive: boolean;
     // AI Time Entry
     enableAiTimeEntry: boolean;
+    proofreadNotes: boolean;
     aiProvider: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual';
     // Anthropic
     anthropicApiKey: string;
@@ -142,6 +143,7 @@ const DEFAULT_SETTINGS: KantataSettings = {
     enableAutoUnarchive: false,
     // AI Time Entry
     enableAiTimeEntry: false,
+    proofreadNotes: true,
     aiProvider: 'anthropic',
     // Anthropic
     anthropicApiKey: '',
@@ -210,6 +212,7 @@ export default class KantataSync extends Plugin {
     workspaceCache: Record<string, WorkspaceCacheEntry> = {};
     statusBarItem!: HTMLElement;
     private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
+    private lastTimeEntry: { id: string; workspaceId: string; data: any } | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -283,6 +286,14 @@ export default class KantataSync extends Plugin {
             name: 'Create AI time entry for current note',
             editorCallback: async (editor, view) => {
                 await this.createTimeEntryForCurrentNote();
+            }
+        });
+
+        this.addCommand({
+            id: 'undo-time-entry',
+            name: 'Undo last time entry',
+            callback: async () => {
+                await this.undoLastTimeEntry();
             }
         });
 
@@ -1418,6 +1429,34 @@ JSON:`;
     }
 
     /**
+     * Proofread and expand notes using AI
+     */
+    async proofreadNotes(notes: string): Promise<string> {
+        const prompt = `Proofread and improve this work note for a professional time entry. 
+Keep the same meaning but:
+- Fix grammar and spelling
+- Make it more professional and clear
+- Expand abbreviations if obvious
+- Keep it concise (2-4 sentences max)
+
+Original note:
+${notes}
+
+Improved note (just the text, no quotes or explanation):`;
+
+        const improved = await this.callAI(prompt);
+        return improved.trim().replace(/^["']|["']$/g, ''); // Remove any quotes
+    }
+
+    /**
+     * Delete a time entry (for undo)
+     */
+    async deleteTimeEntry(timeEntryId: string): Promise<void> {
+        await this.apiRequest(`/time_entries/${timeEntryId}.json`, 'DELETE');
+        console.log(`[KantataSync] Deleted time entry: ${timeEntryId}`);
+    }
+
+    /**
      * Create a time entry in Kantata for the given workspace
      */
     async createTimeEntry(
@@ -1549,13 +1588,29 @@ JSON:`;
             // Get current user ID
             const userId = await this.getCurrentUserId();
             
+            // Proofread notes if enabled
+            let finalNotes = `${analysis.summary}\n\n${analysis.notes}`;
+            if (this.settings.proofreadNotes) {
+                console.log('[KantataSync] Proofreading notes...');
+                finalNotes = await this.proofreadNotes(finalNotes);
+                console.log('[KantataSync] Proofread result:', finalNotes);
+            }
+            
             // Create time entry
             const today = new Date().toISOString().split('T')[0];
-            const timeEntryId = await this.createTimeEntry(workspaceId, userId, storyId, {
+            const timeEntryData = {
                 date: today,
                 hours: analysis.hours,
-                notes: `${analysis.summary}\n\n${analysis.notes}`
-            });
+                notes: finalNotes
+            };
+            const timeEntryId = await this.createTimeEntry(workspaceId, userId, storyId, timeEntryData);
+            
+            // Store for undo
+            this.lastTimeEntry = {
+                id: timeEntryId,
+                workspaceId,
+                data: { ...timeEntryData, storyId, userId }
+            };
             
             return { success: true, timeEntryId };
         } catch (e: any) {
@@ -2421,6 +2476,27 @@ ${teamMembers}
 
         setTimeout(() => this.updateStatusBarForFile(file), 3000);
     }
+
+    /**
+     * Undo the last time entry
+     */
+    async undoLastTimeEntry(): Promise<void> {
+        if (!this.lastTimeEntry) {
+            new Notice('❌ No time entry to undo');
+            return;
+        }
+
+        try {
+            new Notice('🔄 Undoing time entry...');
+            await this.deleteTimeEntry(this.lastTimeEntry.id);
+            new Notice(`✅ Time entry ${this.lastTimeEntry.id} deleted`);
+            
+            // Clear the stored entry
+            this.lastTimeEntry = null;
+        } catch (e: any) {
+            new Notice(`❌ Failed to undo: ${e.message}`);
+        }
+    }
 }
 
 // ==================== SETTINGS TAB ====================
@@ -2678,6 +2754,16 @@ class KantataSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.enableAiTimeEntry)
                 .onChange(async (value) => {
                     this.plugin.settings.enableAiTimeEntry = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Proofread Notes')
+            .setDesc('AI proofreads and improves note text before submitting (more professional, fixes grammar)')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.proofreadNotes)
+                .onChange(async (value) => {
+                    this.plugin.settings.proofreadNotes = value;
                     await this.plugin.saveSettings();
                 }));
 
