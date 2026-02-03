@@ -98,6 +98,7 @@ interface KantataSettings {
     enableAutoUnarchive: boolean;
     // AI Time Entry
     enableAiTimeEntry: boolean;
+    customTemplate: string;
     proofreadNotes: boolean;
     aiProvider: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual';
     // Anthropic
@@ -145,6 +146,7 @@ const DEFAULT_SETTINGS: KantataSettings = {
     enableAutoUnarchive: false,
     // AI Time Entry
     enableAiTimeEntry: false,
+    customTemplate: '',
     proofreadNotes: true,
     aiProvider: 'anthropic',
     // Anthropic
@@ -2745,6 +2747,41 @@ ${teamMembers}
     }
 
     /**
+     * Get template with placeholders replaced
+     * Placeholders: {{customer}}, {{date}}, {{time}}, {{attendees}}
+     */
+    getTemplate(customerName: string, dateStr: string, timeStr: string): string {
+        const defaultTemplate = `==**Meeting Details**==
+**Customer:** {{customer}}
+**Work Session:** {{date}} @ {{time}} CST
+**Netwrix Attendees:** Adam Sneed
+**{{customer}} Attendees:**
+
+==**Activities/Notes**==
+
+**Accomplishments:**
+
+**Issues:**
+
+**Blockers:**
+
+**Next Session:**
+**Next Steps:**
+
+---
+
+<u>Internal Notes</u>
+`;
+        
+        const template = this.settings.customTemplate?.trim() || defaultTemplate;
+        
+        return template
+            .replace(/\{\{customer\}\}/g, customerName)
+            .replace(/\{\{date\}\}/g, dateStr)
+            .replace(/\{\{time\}\}/g, timeStr);
+    }
+
+    /**
      * Find the cache entry for a file, handling archived folder paths.
      * Checks multiple possible paths: direct parent folder, archived path, and full path variations.
      */
@@ -3252,27 +3289,7 @@ ${teamMembers}
                 const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
                 const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
                 
-                organized = `==**Meeting Details**==
-**Customer:** ${customerName}
-**Work Session:** ${dateStr} @ ${timeStr} CST
-**Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:**
-
-==**Activities/Notes**==
-
-**Accomplishments:**
-
-**Issues:**
-
-**Blockers:**
-
-**Next Session:**
-**Next Steps:**
-
----
-
-<u>Internal Notes</u>
-`;
+                organized = this.getTemplate(customerName, dateStr, timeStr);
             } else {
                 new Notice('🤖 Organizing notes with AI...');
                 
@@ -3840,6 +3857,23 @@ class KantataSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
         }
+
+        // Custom template
+        new Setting(containerEl)
+            .setName('Custom Template')
+            .setDesc('Custom template for notes. Use {{customer}}, {{date}}, {{time}} as placeholders. Leave empty for default.')
+            .addTextArea(text => {
+                text.setPlaceholder('Leave empty for default template...')
+                    .setValue(this.plugin.settings.customTemplate)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customTemplate = value;
+                        await this.plugin.saveSettings();
+                    });
+                text.inputEl.rows = 10;
+                text.inputEl.style.width = '100%';
+                text.inputEl.style.fontFamily = 'monospace';
+                text.inputEl.style.fontSize = '12px';
+            });
 
         // Test button (not for manual mode)
         if (provider !== 'manual') {
