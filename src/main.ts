@@ -500,6 +500,30 @@ export default class KantataSync extends Plugin {
     private lastTimeEntry: { id: string; workspaceId: string; data: any } | null = null;
     private isSyncing = false;  // Prevent duplicate submissions
     private debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+    
+    // Cache TTL: 24 hours
+    private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+    /**
+     * Check if a cache entry is still valid (not expired)
+     */
+    private isCacheValid(entry: WorkspaceCacheEntry): boolean {
+        if (!entry.cachedAt) return false;
+        const age = Date.now() - new Date(entry.cachedAt).getTime();
+        return age < this.CACHE_TTL_MS;
+    }
+
+    /**
+     * Sanitize workspace name for use as folder name
+     * Removes/replaces characters that are invalid in file paths
+     */
+    private sanitizeFolderName(name: string): string {
+        return name
+            .replace(/[\/\\:*?"<>|]/g, '-')  // Replace invalid path chars with dash
+            .replace(/\.+$/g, '')             // Remove trailing dots (Windows issue)
+            .replace(/\s+/g, ' ')             // Normalize whitespace
+            .trim();
+    }
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -845,7 +869,7 @@ export default class KantataSync extends Plugin {
                     continue;
                 }
                 
-                const folderName = workspace.title;
+                const folderName = this.sanitizeFolderName(workspace.title);
                 const folderNameLower = folderName.toLowerCase();
 
                 // Check if workspace is already linked to any folder (including archived)
@@ -1492,6 +1516,11 @@ export default class KantataSync extends Plugin {
     }
 
     async apiRequest(endpoint: string, method = 'GET', body?: any): Promise<any> {
+        // Check for network connectivity
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            throw new Error('No internet connection. Please check your network and try again.');
+        }
+        
         await this.rateLimitedDelay();
         if (!this.settings.kantataToken) {
             throw new Error('Kantata token not configured. Go to Settings → KantataSync');
@@ -1551,12 +1580,47 @@ export default class KantataSync extends Plugin {
             } else if (status === 404) {
                 throw new Error('Resource not found. It may have been deleted.');
             } else if (status === 429) {
-                throw new Error('Rate limit exceeded. Please wait before trying again.');
+                // Will be retried by apiRequestWithRetry
+                const retryError = new Error('Rate limit exceeded. Please wait before trying again.');
+                (retryError as any).retryable = true;
+                (retryError as any).status = 429;
+                throw retryError;
             } else if (status >= 500) {
-                throw new Error('Kantata server error. Please try again later.');
+                // Will be retried by apiRequestWithRetry
+                const retryError = new Error('Kantata server error. Please try again later.');
+                (retryError as any).retryable = true;
+                (retryError as any).status = status;
+                throw retryError;
             }
             throw new Error(errorMsg);
         }
+    }
+
+    /**
+     * API request with automatic retry for transient failures (429, 5xx)
+     * Uses exponential backoff: 1s, 2s, 4s
+     */
+    async apiRequestWithRetry(endpoint: string, method = 'GET', body?: any, maxRetries = 3): Promise<any> {
+        let lastError: Error | null = null;
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                return await this.apiRequest(endpoint, method, body);
+            } catch (e: any) {
+                lastError = e;
+                
+                // Only retry on retryable errors (429, 5xx)
+                if (e.retryable && attempt < maxRetries - 1) {
+                    const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+                    console.log(`[KantataSync] Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries}): ${e.message}`);
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+                throw e;
+            }
+        }
+        
+        throw lastError;
     }
 
     // ==================== AI TIME ENTRY ====================
@@ -1894,6 +1958,9 @@ export default class KantataSync extends Plugin {
     /**
      * Analyze note content with AI to generate time entry data
      */
+    // Max content length for AI analysis (~2500 tokens)
+    private readonly MAX_AI_CONTENT_LENGTH = 10000;
+
     async analyzeNoteForTimeEntry(
         noteContent: string,
         availableCategories: string[]
@@ -1901,6 +1968,13 @@ export default class KantataSync extends Plugin {
         // Manual mode - no AI call
         if (this.settings.aiProvider === 'manual') {
             return this.manualAnalysis(noteContent, availableCategories);
+        }
+
+        // Truncate very long content to avoid AI token limits
+        let content = noteContent;
+        if (content.length > this.MAX_AI_CONTENT_LENGTH) {
+            content = content.slice(0, this.MAX_AI_CONTENT_LENGTH) + '\n\n[Content truncated for analysis...]';
+            console.log(`[KantataSync] Truncated note content from ${noteContent.length} to ${this.MAX_AI_CONTENT_LENGTH} chars`);
         }
 
         const prompt = `Convert this work note into a time entry. Return JSON only.
@@ -1919,7 +1993,7 @@ RULES:
 - notes: Brief factual summary (2-3 sentences) - NO invented details
 
 NOTE:
-${noteContent}
+${content}
 
 JSON:`;
 
@@ -2046,6 +2120,12 @@ OUTPUT:`;
         const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
+        // Truncate very long content
+        let notes = roughNotes;
+        if (notes.length > this.MAX_AI_CONTENT_LENGTH) {
+            notes = notes.slice(0, this.MAX_AI_CONTENT_LENGTH) + '\n\n[Content truncated...]';
+        }
+
         const imageNote = images && images.length > 0 
             ? `\n\nIMAGES: ${images.length} attached. Extract attendee names you can clearly see.`
             : '';
@@ -2059,7 +2139,7 @@ RULES:
 - NEVER invent information
 
 ROUGH NOTES:
-${roughNotes}
+${notes}
 
 OUTPUT FORMAT (include ALL sections, leave blank if no content):
 
@@ -2270,10 +2350,11 @@ OUTPUT:`;
     }
 
     async searchWorkspace(customerName: string): Promise<{ id: string; title: string } | null> {
-        if (this.workspaceCache[customerName]) {
+        const cached = this.workspaceCache[customerName];
+        if (cached && this.isCacheValid(cached)) {
             return {
-                id: this.workspaceCache[customerName].workspaceId,
-                title: this.workspaceCache[customerName].workspaceTitle
+                id: cached.workspaceId,
+                title: cached.workspaceTitle
             };
         }
 
