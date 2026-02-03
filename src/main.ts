@@ -1524,6 +1524,29 @@ JSON:`;
     }
 
     /**
+     * Proofread notes for Kantata - clean text only, no template
+     */
+    async proofreadForKantata(notes: string): Promise<string> {
+        const prompt = `Proofread and improve this work note for a time entry. Output clean professional text only.
+
+RULES:
+- Fix grammar and spelling
+- Make it professional and clear
+- Elaborate briefly on what was done
+- Output 2-4 sentences max
+- NO headers, NO bullet points, NO formatting
+- Just plain text paragraphs
+
+INPUT:
+${notes}
+
+OUTPUT (plain text only):`;
+
+        const result = await this.callAI(prompt);
+        return result.trim();
+    }
+
+    /**
      * Smart AI enhancement: proofread, apply template if needed, expand if brief
      */
     async enhanceNotes(notes: string, customerName: string = 'Customer'): Promise<string> {
@@ -1795,12 +1818,12 @@ OUTPUT:`;
             // Get current user ID
             const userId = await this.getCurrentUserId();
             
-            // Enhance notes if enabled (proofread + template + expand)
+            // For Kantata: just clean professional text, NO template
             let finalNotes = `${analysis.summary}\n\n${analysis.notes}`;
             if (this.settings.proofreadNotes) {
-                console.log('[KantataSync] Enhancing notes (proofread/template/expand)...');
-                finalNotes = await this.enhanceNotes(finalNotes, customerName);
-                console.log('[KantataSync] Enhanced result:', finalNotes);
+                console.log('[KantataSync] Proofreading notes for Kantata...');
+                finalNotes = await this.proofreadForKantata(finalNotes);
+                console.log('[KantataSync] Proofread result:', finalNotes);
             }
             
             // Create time entry
