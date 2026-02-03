@@ -4437,6 +4437,27 @@ class KantataSettingTab extends PluginSettingTab {
                     }));
         }
 
+        // Test button (right after provider settings, not for manual mode)
+        if (provider !== 'manual') {
+            new Setting(containerEl)
+                .setName('Test AI Connection')
+                .setDesc(`Verify ${provider} credentials`)
+                .addButton(button => button
+                    .setButtonText('Test')
+                    .onClick(async () => {
+                        try {
+                            const response = await this.plugin.callAI('Reply with just: OK');
+                            if (response.toLowerCase().includes('ok')) {
+                                new Notice(`✅ ${provider} connected!`);
+                            } else {
+                                new Notice(`✅ Connected: ${response.slice(0, 50)}`);
+                            }
+                        } catch (e: any) {
+                            new Notice(`❌ ${provider} failed: ${e.message}`);
+                        }
+                    }));
+        }
+
         // Custom template
         new Setting(containerEl)
             .setName('Custom Template')
@@ -4470,27 +4491,6 @@ class KantataSettingTab extends PluginSettingTab {
                 text.inputEl.style.fontFamily = 'monospace';
                 text.inputEl.style.fontSize = '12px';
             });
-
-        // Test button (not for manual mode)
-        if (provider !== 'manual') {
-            new Setting(containerEl)
-                .setName('Test AI Connection')
-                .setDesc(`Verify ${provider} credentials`)
-                .addButton(button => button
-                    .setButtonText('Test')
-                    .onClick(async () => {
-                        try {
-                            const response = await this.plugin.callAI('Reply with just: OK');
-                            if (response.toLowerCase().includes('ok')) {
-                                new Notice(`✅ ${provider} connected!`);
-                            } else {
-                                new Notice(`✅ Connected: ${response.slice(0, 50)}`);
-                            }
-                        } catch (e: any) {
-                            new Notice(`❌ ${provider} failed: ${e.message}`);
-                        }
-                    }));
-        }
 
         // Menu Options
         containerEl.createEl('h3', { text: 'Status Bar Menu' });
