@@ -3338,6 +3338,23 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName('Test Kantata Connection')
+            .setDesc('Verify your Kantata token works')
+            .addButton(button => button
+                .setButtonText('Test')
+                .onClick(async () => {
+                    try {
+                        const response = await this.plugin.apiRequest('/users/me.json');
+                        const users = Object.values(response.users || {}) as any[];
+                        if (users.length > 0) {
+                            new Notice(`✅ Kantata connected as: ${users[0].full_name}`);
+                        }
+                    } catch (e: any) {
+                        new Notice(`❌ Kantata connection failed: ${e.message}`);
+                    }
+                }));
+
+        new Setting(containerEl)
             .setName('Include Archived Workspaces')
             .setDesc('Search archived workspaces when resolving customer names')
             .addToggle(toggle => toggle
@@ -3792,24 +3809,6 @@ class KantataSettingTab extends PluginSettingTab {
                         }
                     }));
         }
-
-        // Test Kantata API connection
-        new Setting(containerEl)
-            .setName('Test Kantata Connection')
-            .setDesc('Verify your Kantata token works')
-            .addButton(button => button
-                .setButtonText('Test')
-                .onClick(async () => {
-                    try {
-                        const response = await this.plugin.apiRequest('/users/me.json');
-                        const users = Object.values(response.users || {}) as any[];
-                        if (users.length > 0) {
-                            new Notice(`✅ Kantata connected as: ${users[0].full_name}`);
-                        }
-                    } catch (e: any) {
-                        new Notice(`❌ Kantata connection failed: ${e.message}`);
-                    }
-                }));
 
         // Cache Management
         containerEl.createEl('h3', { text: 'Cache Management' });
