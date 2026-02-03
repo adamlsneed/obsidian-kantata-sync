@@ -3398,116 +3398,93 @@ ${teamMembers}
     }
 
     /**
-     * Get available workspace statuses - tries multiple sources:
-     * 1. Direct status endpoints (if they exist)
-     * 2. Current workspace statuses  
-     * 3. Status change history
+     * Get available workspace statuses from official Kantata status list
+     * Source: https://knowledge.kantata.com/hc/en-us/articles/115005042433-Project-Status#Project-Status-List
+     * Note: Account admins can disable some statuses, but cannot create custom ones
      */
     async getWorkspaceStatuses(): Promise<StatusOption[]> {
-        const statusMap = new Map<string, StatusOption>();
-        
-        const addStatus = (key: string, message: string, color: string) => {
-            if (key && message && !statusMap.has(key)) {
-                statusMap.set(key, { key, message, color: color || 'gray' });
-            }
-        };
-        
-        // Try potential direct endpoints first (may be undocumented)
-        const potentialEndpoints = [
-            '/project_statuses.json',
-            '/account_project_statuses.json', 
-            '/workspace_statuses.json',
-            '/statuses.json',
-        ];
-        
-        for (const endpoint of potentialEndpoints) {
-            try {
-                const response = await this.apiRequest(endpoint);
-                console.log(`[KantataSync] Found statuses endpoint: ${endpoint}`, response);
-                // Try to parse various response formats
-                const statuses = response.project_statuses || response.statuses || 
-                                 response.workspace_statuses || response.account_project_statuses;
-                if (statuses) {
-                    if (Array.isArray(statuses)) {
-                        for (const s of statuses) {
-                            addStatus(String(s.key || s.id), s.message || s.name || s.label, s.color);
-                        }
-                    } else if (typeof statuses === 'object') {
-                        for (const id of Object.keys(statuses)) {
-                            const s = statuses[id];
-                            addStatus(String(s.key || id), s.message || s.name || s.label, s.color);
-                        }
-                    }
-                    if (statusMap.size > 0) {
-                        console.log(`[KantataSync] Loaded ${statusMap.size} statuses from ${endpoint}`);
-                        break;
-                    }
-                }
-            } catch (e) {
-                // Endpoint doesn't exist, continue
-            }
-        }
-        
-        // If no direct endpoint worked, scan workspaces + history
-        if (statusMap.size === 0) {
-            try {
-                // Scan current workspaces
-                const wsResponse = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
-                const workspaces = wsResponse.workspaces || {};
-                
-                for (const id of Object.keys(workspaces)) {
-                    const ws = workspaces[id];
-                    if (ws.status?.key) {
-                        addStatus(String(ws.status.key), ws.status.message, ws.status.color);
-                    }
-                }
-                
-                // Scan status change history
-                try {
-                    const historyResponse = await this.apiRequest('/workspace_status_changes.json?per_page=200');
-                    const changes = historyResponse.workspace_status_changes || {};
-                    
-                    for (const id of Object.keys(changes)) {
-                        const change = changes[id];
-                        if (change.from_status_key) {
-                            addStatus(change.from_status_key, change.from_message, change.from_color);
-                        }
-                        if (change.to_status_key) {
-                            addStatus(change.to_status_key, change.to_message, change.to_color);
-                        }
-                    }
-                } catch (e) {
-                    console.log('[KantataSync] Could not fetch status history');
-                }
-            } catch (e) {
-                console.error('[KantataSync] Failed to scan workspaces:', e);
-            }
-        }
-        
-        // Sort by color priority
-        const colorOrder: Record<string, number> = { 
-            green: 1, light_green: 2, yellow: 3, red: 4, blue: 5, gray: 6 
-        };
-        const statuses = Array.from(statusMap.values()).sort((a, b) => {
-            const orderA = colorOrder[a.color] || 7;
-            const orderB = colorOrder[b.color] || 7;
-            if (orderA !== orderB) return orderA - orderB;
-            return a.message.localeCompare(b.message);
-        });
-        
-        if (statuses.length > 0) {
-            console.log(`[KantataSync] Total statuses available: ${statuses.length}`);
-            return statuses;
-        }
-        
-        // Fallback
-        console.log('[KantataSync] Using fallback status list');
+        // Official Kantata project status list (canonical source)
+        // Organized by color category
         return [
-            { key: '310', message: 'In Progress', color: 'green' },
-            { key: '403', message: 'At Risk', color: 'yellow' },
-            { key: '505', message: 'Blocked', color: 'red' },
-            { key: '605', message: 'Completed', color: 'blue' },
+            // Gray - Not yet started
+            { key: '100', message: 'Backlog', color: 'gray' },
+            { key: '105', message: 'Bid Stage', color: 'gray' },
+            { key: '107', message: 'Contingent', color: 'gray' },
+            { key: '110', message: 'Estimate', color: 'gray' },
+            { key: '115', message: 'In Planning', color: 'gray' },
+            { key: '120', message: 'In Setup', color: 'gray' },
+            { key: '125', message: 'Inactive', color: 'gray' },
             { key: '130', message: 'Not Started', color: 'gray' },
+            { key: '135', message: 'On Hold', color: 'gray' },
+            { key: '138', message: 'Pipeline', color: 'gray' },
+            { key: '140', message: 'Proposed', color: 'gray' },
+            { key: '143', message: 'Prospect', color: 'gray' },
+            { key: '145', message: 'Quality Control', color: 'gray' },
+            // Light Green - Close to starting
+            { key: '200', message: 'Approved', color: 'light_green' },
+            { key: '205', message: 'Confirmed', color: 'light_green' },
+            { key: '207', message: 'Contingent', color: 'light_green' },
+            { key: '210', message: 'Okay to Start', color: 'light_green' },
+            { key: '213', message: 'Pending', color: 'light_green' },
+            { key: '215', message: 'Ready', color: 'light_green' },
+            { key: '220', message: 'Scheduled', color: 'light_green' },
+            { key: '225', message: 'Quality Control', color: 'light_green' },
+            { key: '234', message: 'Smart Start', color: 'light_green' },
+            { key: '235', message: 'Tech Setup', color: 'light_green' },
+            { key: '255', message: 'Not Started', color: 'light_green' },
+            // Green - In progress
+            { key: '300', message: 'Active', color: 'green' },
+            { key: '305', message: 'In Development', color: 'green' },
+            { key: '310', message: 'In Progress', color: 'green' },
+            { key: '315', message: 'In Testing', color: 'green' },
+            { key: '317', message: 'Live', color: 'green' },
+            { key: '320', message: 'On Track', color: 'green' },
+            { key: '325', message: 'Ready for Testing', color: 'green' },
+            { key: '330', message: 'Started', color: 'green' },
+            { key: '335', message: 'Quality Control', color: 'green' },
+            { key: '340', message: 'UAT', color: 'green' },
+            // Yellow - In progress with pending action
+            { key: '400', message: 'Alert', color: 'yellow' },
+            { key: '401', message: 'Active', color: 'yellow' },
+            { key: '403', message: 'At Risk', color: 'yellow' },
+            { key: '405', message: 'Issue', color: 'yellow' },
+            { key: '410', message: 'Keep Watch', color: 'yellow' },
+            { key: '415', message: 'Late', color: 'yellow' },
+            { key: '420', message: 'Needs Review', color: 'yellow' },
+            { key: '423', message: 'On Hold', color: 'yellow' },
+            { key: '425', message: 'Over Budget', color: 'yellow' },
+            { key: '430', message: 'Past Due', color: 'yellow' },
+            { key: '435', message: 'Pending Approval', color: 'yellow' },
+            { key: '440', message: 'Priority', color: 'yellow' },
+            { key: '445', message: 'Requires Feedback', color: 'yellow' },
+            { key: '450', message: 'Requires Follow-up', color: 'yellow' },
+            { key: '455', message: 'Requires Research', color: 'yellow' },
+            { key: '459', message: 'Quality Control', color: 'yellow' },
+            { key: '465', message: 'UAT', color: 'yellow' },
+            // Red - Blocked or ended
+            { key: '500', message: 'Alert', color: 'red' },
+            { key: '501', message: 'Active', color: 'red' },
+            { key: '505', message: 'Blocked', color: 'red' },
+            { key: '510', message: 'Canceled', color: 'red' },
+            { key: '513', message: 'Canceled - Change Order', color: 'red' },
+            { key: '515', message: 'Concern', color: 'red' },
+            { key: '520', message: 'Late Payment', color: 'red' },
+            { key: '525', message: 'On Hold', color: 'red' },
+            { key: '530', message: 'Suspended', color: 'red' },
+            { key: '535', message: 'Terminated', color: 'red' },
+            { key: '540', message: 'Rejected', color: 'red' },
+            { key: '545', message: 'Quality Control', color: 'red' },
+            { key: '555', message: 'UAT', color: 'red' },
+            // Blue - Finished
+            { key: '600', message: 'Closed', color: 'blue' },
+            { key: '601', message: 'Canceled', color: 'blue' },
+            { key: '602', message: 'Canceled Confirmed', color: 'blue' },
+            { key: '605', message: 'Completed', color: 'blue' },
+            { key: '610', message: 'Delivered', color: 'blue' },
+            { key: '615', message: 'Done', color: 'blue' },
+            { key: '620', message: 'Shipped', color: 'blue' },
+            { key: '625', message: 'Submitted', color: 'blue' },
+            { key: '630', message: 'Quality Control', color: 'blue' },
         ];
     }
 
