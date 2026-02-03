@@ -297,6 +297,14 @@ export default class KantataSync extends Plugin {
             }
         });
 
+        this.addCommand({
+            id: 'organize-notes',
+            name: 'AI: Organize notes into template',
+            editorCallback: async (editor, view) => {
+                await this.organizeCurrentNote(editor);
+            }
+        });
+
         // Status bar
         this.statusBarItem = this.addStatusBarItem();
         this.statusBarItem.addClass('obsidianlink-status');
@@ -1449,6 +1457,58 @@ Improved note (just the text, no quotes or explanation):`;
     }
 
     /**
+     * Organize rough notes into the standard work session template format
+     */
+    async organizeNotesWithTemplate(roughNotes: string, customerName: string): Promise<string> {
+        const now = new Date();
+        const minutes = now.getMinutes();
+        const roundedMinutes = Math.round(minutes / 30) * 30;
+        now.setMinutes(roundedMinutes);
+        const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        const prompt = `Organize these rough work notes into a structured format. Extract and categorize the information.
+
+ROUGH NOTES:
+${roughNotes}
+
+OUTPUT FORMAT (fill in based on the notes, leave sections empty with "-" if no relevant info):
+
+==**Meeting Details**==
+**Customer:** ${customerName}
+**Work Session:** ${dateStr} @ ${timeStr} CST
+**Netwrix Attendees:** Adam Sneed
+**${customerName} Attendees:** [extract from notes or leave blank]
+
+==**Activities/Notes**==
+
+**Accomplishments:**
+[bullet points of what was completed/achieved]
+
+**Issues:**
+[bullet points of problems encountered]
+
+**Blockers:**
+[anything blocking progress]
+
+**Next Session:**
+[when is the next meeting if mentioned]
+
+**Next Steps:**
+[action items going forward]
+
+---
+
+<u>Internal Notes</u>
+[any internal-only observations]
+
+Generate ONLY the formatted output, no explanations:`;
+
+        const formatted = await this.callAI(prompt);
+        return formatted.trim();
+    }
+
+    /**
      * Delete a time entry (for undo)
      */
     async deleteTimeEntry(timeEntryId: string): Promise<void> {
@@ -2495,6 +2555,48 @@ ${teamMembers}
             this.lastTimeEntry = null;
         } catch (e: any) {
             new Notice(`❌ Failed to undo: ${e.message}`);
+        }
+    }
+
+    /**
+     * Organize current note using AI template
+     */
+    async organizeCurrentNote(editor: any): Promise<void> {
+        if (!this.hasAiCredentials()) {
+            new Notice(`❌ ${this.settings.aiProvider} credentials not configured`);
+            return;
+        }
+
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+            new Notice('❌ No active file');
+            return;
+        }
+
+        // Get customer name from folder
+        const folderPath = file.parent?.path || '';
+        const customerName = folderPath.split('/').pop() || 'Customer';
+
+        // Get current content (excluding frontmatter)
+        const content = editor.getValue();
+        const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n/);
+        const frontmatter = frontmatterMatch ? frontmatterMatch[0] : '';
+        const body = frontmatterMatch ? content.slice(frontmatter.length) : content;
+
+        if (!body.trim()) {
+            new Notice('❌ No content to organize');
+            return;
+        }
+
+        try {
+            new Notice('🤖 Organizing notes with AI...');
+            const organized = await this.organizeNotesWithTemplate(body, customerName);
+            
+            // Replace content (keep frontmatter)
+            editor.setValue(frontmatter + organized);
+            new Notice('✅ Notes organized!');
+        } catch (e: any) {
+            new Notice(`❌ Failed to organize: ${e.message}`);
         }
     }
 }
