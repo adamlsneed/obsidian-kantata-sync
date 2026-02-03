@@ -456,10 +456,19 @@ export default class KantataSync extends Plugin {
                     });
             });
             
+            if (this.settings.enableAiTimeEntry) {
+                menu.addItem((item) => {
+                    item.setTitle('⏱️ AI: Create Time Entry')
+                        .onClick(async () => {
+                            await this.createTimeEntryForCurrentNote();
+                        });
+                });
+            }
+            
             menu.addItem((item) => {
-                item.setTitle('⏱️ Create Time Entry')
+                item.setTitle('⏱️ Manual: Create Time Entry')
                     .onClick(async () => {
-                        await this.createTimeEntryForCurrentNote();
+                        await this.openManualTimeEntryModal();
                     });
             });
             
@@ -474,7 +483,7 @@ export default class KantataSync extends Plugin {
             
             menu.showAtMouseEvent(evt);
         });
-        this.updateStatusBar(this.settings.enableAiTimeEntry ? 'Note ⚪ · Time ⚪' : 'Note ⚪', 'Click for options');
+        this.updateStatusBar('Note ⚪ · Time ⚪', 'Click for options');
 
         // File event handlers
         this.registerEvent(this.app.workspace.on('file-open', async (file) => {
@@ -1054,15 +1063,11 @@ export default class KantataSync extends Plugin {
             const isSynced = frontmatter.kantata_synced === true || frontmatter.kantata_synced === 'true';
             const syncedAt = frontmatter.kantata_synced_at as string | undefined;
             
-            // Time entry status (only if AI time entry enabled)
-            let timeStatusText = '';
-            let timeTooltip = '';
-            if (this.settings.enableAiTimeEntry) {
-                const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
-                const timeStatus = hasTimeEntry ? '✅' : '⚪';
-                timeStatusText = ` · Time ${timeStatus}`;
-                timeTooltip = hasTimeEntry ? ' | Time logged' : ' | No time entry';
-            }
+            // Time entry status (always show - manual entry always available)
+            const hasTimeEntry = !!frontmatter.kantata_time_entry_id;
+            const timeStatus = hasTimeEntry ? '✅' : '⚪';
+            const timeStatusText = ` · Time ${timeStatus}`;
+            const timeTooltip = hasTimeEntry ? ' | Time logged' : ' | No time entry';
 
             // Get workspace status if enabled
             let projectStatusText = '';
@@ -1096,7 +1101,7 @@ export default class KantataSync extends Plugin {
                 `${tooltip}${timeTooltip}`
             );
         } catch (e) {
-            this.updateStatusBar(this.settings.enableAiTimeEntry ? 'Note ⚪ · Time ⚪' : 'Note ⚪', 'Ready');
+            this.updateStatusBar('Note ⚪ · Time ⚪', 'Ready');
         }
     }
 
