@@ -1560,42 +1560,35 @@ OUTPUT (plain text only):`;
         const prompt = `Organize these work notes into the template below.
 
 RULES:
-- Accomplishments: ELABORATE and expand into professional sentences - this is the main content
-- All other fields: ONLY include if explicitly mentioned, otherwise use "-"
-- NEVER invent attendees, issues, blockers, next steps - only use what's stated
+- Accomplishments: ELABORATE and expand into professional sentences
+- OMIT sections with no content entirely (do NOT include Issues, Blockers, Next Session, Next Steps if nothing mentioned)
+- NEVER invent information
 
 ROUGH NOTES:
 ${notes}
 
-OUTPUT FORMAT:
+OUTPUT FORMAT (OMIT empty sections):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [only if mentioned, otherwise "-"]
+**${customerName} Attendees:** [if mentioned]
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
-[ELABORATE: expand the work notes into full professional sentences]
+[ELABORATE: expand work notes into professional sentences]
 
-**Issues:**
-[only if mentioned, otherwise "-"]
-
-**Blockers:**
-[only if mentioned, otherwise "-"]
-
-**Next Session:**
-[only if mentioned, otherwise "-"]
-
-**Next Steps:**
-[only if mentioned, otherwise "-"]
+[Include ONLY if mentioned - otherwise OMIT the section entirely:]
+**Issues:** [content]
+**Blockers:** [content]
+**Next Session:** [content]
+**Next Steps:** [content]
 
 ---
 
 <u>Internal Notes</u>
--
 
 OUTPUT:`;
 
@@ -1622,42 +1615,36 @@ OUTPUT:`;
 
 RULES:
 - Accomplishments: ELABORATE and expand into professional sentences
-- Attendees: Extract from images if visible, otherwise "-"
-- All other fields: ONLY include if explicitly mentioned, otherwise "-"
-- NEVER invent information for Issues, Blockers, Next Steps
+- Attendees: Extract from images if visible, otherwise leave blank
+- OMIT sections entirely if no content (don't include Issues, Blockers, etc. if nothing mentioned)
+- NEVER invent information
 
 ROUGH NOTES:
 ${roughNotes}
 
-OUTPUT FORMAT:
+OUTPUT FORMAT (OMIT any section with no content):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [from images or notes, otherwise "-"]
+**${customerName} Attendees:** [from images/notes or leave blank]
 
 ==**Activities/Notes**==
 
 **Accomplishments:**
 [ELABORATE: expand work notes into full professional sentences]
 
-**Issues:**
-[only if mentioned, otherwise "-"]
-
-**Blockers:**
-[only if mentioned, otherwise "-"]
-
-**Next Session:**
-[only if mentioned, otherwise "-"]
-
-**Next Steps:**
-[only if mentioned, otherwise "-"]
+[ONLY include these sections IF mentioned in notes - otherwise OMIT entirely:]
+**Issues:** [content]
+**Blockers:** [content]
+**Next Session:** [content]
+**Next Steps:** [content]
 
 ---
 
 <u>Internal Notes</u>
-[LEAVE EMPTY]
+
 
 OUTPUT:`;
 
