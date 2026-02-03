@@ -1532,22 +1532,36 @@ JSON:`;
      * Proofread notes for Kantata - clean text only, no template
      */
     async proofreadForKantata(notes: string): Promise<string> {
-        const prompt = `Create a professional time entry note from this content.
+        // Strip markdown from input first
+        const cleanInput = notes
+            .replace(/==\*\*[^*]+\*\*==/g, '')  // Remove ==**headers**==
+            .replace(/\*\*[^*]+:\*\*/g, '')     // Remove **Label:**
+            .replace(/\*\*/g, '')               // Remove remaining **
+            .replace(/<u>[^<]*<\/u>/g, '')      // Remove <u>tags</u>
+            .replace(/^-\s*/gm, '')             // Remove bullet points
+            .replace(/\n{3,}/g, '\n\n')         // Collapse multiple newlines
+            .trim();
+
+        const prompt = `Summarize this work session as a brief time entry note.
 
 RULES:
-- Use markdown formatting (bold, bullets) 
-- Keep it concise - summarize accomplishments
+- Plain text only - NO markdown, NO formatting
+- 2-4 sentences summarizing what was accomplished
 - Professional tone
-- Use **bold** for emphasis
-- Use bullet points (- ) for multiple items
+- NO bold, NO bullets, NO headers
 
 INPUT:
-${notes}
+${cleanInput}
 
-OUTPUT (markdown formatted):`;
+OUTPUT (plain text only):`;
 
         const result = await this.callAI(prompt);
-        return result.trim();
+        // Extra cleanup - remove any markdown the AI might have added
+        return result.trim()
+            .replace(/\*\*/g, '')
+            .replace(/\*/g, '')
+            .replace(/^#+\s*/gm, '')
+            .replace(/^-\s*/gm, '');
     }
 
     /**
