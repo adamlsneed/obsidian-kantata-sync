@@ -3386,7 +3386,7 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         // Filtering
-        containerEl.createEl('h3', { text: 'Filtering' });
+        containerEl.createEl('h3', { text: 'Workspace Sync Filtering' });
 
         new Setting(containerEl)
             .setName('Filter by status')
