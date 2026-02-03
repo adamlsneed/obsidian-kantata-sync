@@ -1133,42 +1133,35 @@ export default class KantataSync extends Plugin {
             headers['x-api-key'] = this.settings.anthropicApiKey;
         }
 
-        let response;
-        try {
-            response = await requestUrl({
-                url: 'https://api.anthropic.com/v1/messages',
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    model: this.settings.anthropicModel || 'claude-sonnet-4-20250514',
-                    max_tokens: 500,
-                    messages: [{ role: 'user', content: prompt }]
-                })
-            });
-        } catch (e: any) {
-            // Extract error details - Obsidian requestUrl puts response in different places
-            const status = e.status || e.httpStatus || 'unknown';
-            let errorMsg = `Anthropic API error (${status})`;
-            
-            // Try to get error from response body
-            const responseText = e.response || e.text || e.body || '';
-            if (responseText) {
-                try {
-                    const errorData = typeof responseText === 'string' ? JSON.parse(responseText) : responseText;
-                    if (errorData.error?.message) {
-                        errorMsg = `${errorMsg}: ${errorData.error.message}`;
-                    } else if (errorData.message) {
-                        errorMsg = `${errorMsg}: ${errorData.message}`;
-                    }
-                } catch {
-                    errorMsg = `${errorMsg}: ${responseText.slice(0, 200)}`;
+        // Use throw: false so we can read error response body
+        const response = await requestUrl({
+            url: 'https://api.anthropic.com/v1/messages',
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model: this.settings.anthropicModel || 'claude-sonnet-4-20250514',
+                max_tokens: 500,
+                messages: [{ role: 'user', content: prompt }]
+            }),
+            throw: false
+        });
+
+        // Check for errors
+        if (response.status >= 400) {
+            let errorMsg = `Anthropic API error (${response.status})`;
+            try {
+                const errorData = response.json;
+                console.error('[KantataSync] Anthropic error response:', errorData);
+                if (errorData?.error?.message) {
+                    errorMsg = `${errorMsg}: ${errorData.error.message}`;
+                } else if (errorData?.message) {
+                    errorMsg = `${errorMsg}: ${errorData.message}`;
+                } else {
+                    errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) || 'Unknown error'}`;
                 }
-            } else if (e.message && e.message !== 'Request failed') {
-                errorMsg = `${errorMsg}: ${e.message}`;
+            } catch {
+                errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) || 'Unknown error'}`;
             }
-            
-            // Log full error for debugging
-            console.error('[KantataSync] Anthropic error:', JSON.stringify(e, null, 2));
             throw new Error(errorMsg);
         }
 
