@@ -1440,35 +1440,57 @@ JSON:`;
      * Smart AI enhancement: proofread, apply template if needed, expand if brief
      */
     async enhanceNotes(notes: string, customerName: string = 'Customer'): Promise<string> {
-        const prompt = `You are a professional note editor. Analyze this work session note and improve it.
+        const now = new Date();
+        const minutes = now.getMinutes();
+        const roundedMinutes = Math.round(minutes / 30) * 30;
+        now.setMinutes(roundedMinutes);
+        const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        const prompt = `You are a professional note editor. Take these rough work notes and organize them into the EXACT template format below.
 
 DO ALL OF THESE:
 1. PROOFREAD: Fix grammar, spelling, make professional
-2. TEMPLATE: If not already structured, organize into the sections below
-3. EXPAND: If too brief, add reasonable professional detail based on context
+2. TEMPLATE: Organize into the exact sections below
+3. EXPAND: If notes are brief, expand into full professional sentences
 
-INPUT NOTE:
+ROUGH NOTES:
 ${notes}
 
-OUTPUT FORMAT (use this structure, fill sections based on content, use "-" if no info):
+OUTPUT THIS EXACT FORMAT (fill sections based on content, leave empty if no info):
+
+==**Meeting Details**==
+**Customer:** ${customerName}
+**Work Session:** ${dateStr} @ ${timeStr} CST
+**Netwrix Attendees:** Adam Sneed
+**${customerName} Attendees:** [extract names from notes if mentioned, otherwise leave blank]
+
+==**Activities/Notes**==
 
 **Accomplishments:**
-- [what was completed/achieved - expand with professional detail]
+[bullet points of what was completed - expand brief notes into professional sentences]
 
 **Issues:**
-- [problems encountered]
+[bullet points of problems encountered]
 
 **Blockers:**
-- [anything blocking progress]
+[anything blocking progress]
+
+**Next Session:**
+[when is next meeting if mentioned]
 
 **Next Steps:**
-- [action items]
+[action items going forward]
+
+---
+
+<u>Internal Notes</u>
+[any internal observations, or leave blank]
 
 RULES:
-- Keep all factual information from the original
-- Expand brief notes into full professional sentences
-- If already well-formatted, just proofread and improve
-- Be concise but complete
+- Use the EXACT format above with ==, **, and <u> tags
+- Keep all factual information from original
+- Expand brief notes into complete professional sentences
 - Output ONLY the formatted note, no explanations
 
 OUTPUT:`;
@@ -1634,7 +1656,7 @@ Generate ONLY the formatted output, no explanations:`;
     /**
      * Process AI time entry after successful note sync
      */
-    async processAiTimeEntry(workspaceId: string, noteContent: string): Promise<{ success: boolean; timeEntryId?: string; error?: string }> {
+    async processAiTimeEntry(workspaceId: string, noteContent: string, customerName: string = 'Customer'): Promise<{ success: boolean; timeEntryId?: string; error?: string }> {
         if (!this.settings.enableAiTimeEntry) {
             return { success: true }; // Feature disabled, silently succeed
         }
@@ -1673,7 +1695,7 @@ Generate ONLY the formatted output, no explanations:`;
             let finalNotes = `${analysis.summary}\n\n${analysis.notes}`;
             if (this.settings.proofreadNotes) {
                 console.log('[KantataSync] Enhancing notes (proofread/template/expand)...');
-                finalNotes = await this.enhanceNotes(finalNotes);
+                finalNotes = await this.enhanceNotes(finalNotes, customerName);
                 console.log('[KantataSync] Enhanced result:', finalNotes);
             }
             
@@ -2520,11 +2542,13 @@ ${teamMembers}
             return;
         }
 
+        // Get customer name from folder
+        const customerName = this.getCustomerName(file) || 'Customer';
+
         // Get workspace ID - either from frontmatter or search
         let workspaceId = frontmatter.kantata_workspace_id;
         if (!workspaceId) {
-            const customerName = this.getCustomerName(file);
-            if (!customerName) {
+            if (!customerName || customerName === 'Customer') {
                 new Notice('Could not determine customer from path');
                 return;
             }
@@ -2540,7 +2564,7 @@ ${teamMembers}
         this.updateStatusBar('⏱️ Time: ⏳', 'Creating time entry...');
         new Notice('🤖 Analyzing note and creating time entry...');
 
-        const result = await this.processAiTimeEntry(workspaceId, cleanBody);
+        const result = await this.processAiTimeEntry(workspaceId, cleanBody, customerName);
 
         if (result.success && result.timeEntryId) {
             // Save time entry ID to frontmatter
