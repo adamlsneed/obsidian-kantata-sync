@@ -99,9 +99,7 @@ interface KantataSettings {
     enableAiTimeEntry: boolean;
     aiProvider: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual';
     // Anthropic
-    anthropicAuthMethod: 'api_key' | 'oauth_token';
     anthropicApiKey: string;
-    anthropicOAuthToken: string;
     anthropicModel: string;
     // OpenAI
     openaiApiKey: string;
@@ -146,9 +144,7 @@ const DEFAULT_SETTINGS: KantataSettings = {
     enableAiTimeEntry: false,
     aiProvider: 'anthropic',
     // Anthropic
-    anthropicAuthMethod: 'api_key',
     anthropicApiKey: '',
-    anthropicOAuthToken: '',
     anthropicModel: 'claude-sonnet-4-20250514',
     // OpenAI
     openaiApiKey: '',
@@ -1112,26 +1108,18 @@ export default class KantataSync extends Plugin {
     }
 
     /**
-     * Call Anthropic API with support for both API key and OAuth token auth
+     * Call Anthropic API
      */
     async callAnthropic(prompt: string): Promise<string> {
+        if (!this.settings.anthropicApiKey) {
+            throw new Error('Anthropic API key not configured');
+        }
+
         const headers: Record<string, string> = {
             'content-type': 'application/json',
-            'anthropic-version': '2023-06-01'
+            'anthropic-version': '2023-06-01',
+            'x-api-key': this.settings.anthropicApiKey
         };
-
-        if (this.settings.anthropicAuthMethod === 'oauth_token') {
-            if (!this.settings.anthropicOAuthToken) {
-                throw new Error('Anthropic OAuth token not configured');
-            }
-            headers['Authorization'] = `Bearer ${this.settings.anthropicOAuthToken}`;
-            headers['anthropic-beta'] = 'oauth-2025-04-20';
-        } else {
-            if (!this.settings.anthropicApiKey) {
-                throw new Error('Anthropic API key not configured');
-            }
-            headers['x-api-key'] = this.settings.anthropicApiKey;
-        }
 
         // Use throw: false so we can read error response body
         const response = await requestUrl({
@@ -2680,47 +2668,23 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'anthropic') {
             new Setting(containerEl)
-                .setName('Anthropic Auth Method')
-                .setDesc('API Key (pay-as-you-go) or OAuth Token (Pro/Max subscribers)')
-                .addDropdown(dropdown => dropdown
-                    .addOption('api_key', 'API Key')
-                    .addOption('oauth_token', 'OAuth Token (Claude Code)')
-                    .setValue(this.plugin.settings.anthropicAuthMethod)
-                    .onChange(async (value: 'api_key' | 'oauth_token') => {
-                        this.plugin.settings.anthropicAuthMethod = value;
+                .setName('Anthropic API Key')
+                .setDesc(createFragment(frag => {
+                    frag.appendText('Get from ');
+                    frag.createEl('a', {
+                        text: 'console.anthropic.com',
+                        href: 'https://console.anthropic.com/settings/keys'
+                    });
+                    frag.appendText(' (starts with sk-ant-api03-...)');
+                }))
+                .addText(text => text
+                    .setPlaceholder('sk-ant-api03-...')
+                    .setValue(this.plugin.settings.anthropicApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.anthropicApiKey = value;
                         await this.plugin.saveSettings();
-                        this.display();
-                    }));
-
-            if (this.plugin.settings.anthropicAuthMethod === 'api_key') {
-                new Setting(containerEl)
-                    .setName('Anthropic API Key')
-                    .setDesc('Get from console.anthropic.com (starts with sk-ant-api03-...)')
-                    .addText(text => text
-                        .setPlaceholder('sk-ant-api03-...')
-                        .setValue(this.plugin.settings.anthropicApiKey)
-                        .onChange(async (value) => {
-                            this.plugin.settings.anthropicApiKey = value;
-                            await this.plugin.saveSettings();
-                        })
-                        .inputEl.type = 'password');
-            } else {
-                new Setting(containerEl)
-                    .setName('Anthropic OAuth Token')
-                    .setDesc(createFragment(frag => {
-                        frag.appendText('For Claude Pro/Max subscribers. Run ');
-                        frag.createEl('code', { text: 'claude setup-token' });
-                        frag.appendText(' in terminal to generate. Token starts with sk-ant-oat01-...');
-                    }))
-                    .addText(text => text
-                        .setPlaceholder('sk-ant-oat01-...')
-                        .setValue(this.plugin.settings.anthropicOAuthToken)
-                        .onChange(async (value) => {
-                            this.plugin.settings.anthropicOAuthToken = value;
-                            await this.plugin.saveSettings();
-                        })
-                        .inputEl.type = 'password');
-            }
+                    })
+                    .inputEl.type = 'password');
 
             new Setting(containerEl)
                 .setName('Claude Model')
