@@ -1138,16 +1138,16 @@ export default class KantataSync extends Plugin {
     /**
      * Call AI provider based on settings
      */
-    async callAI(prompt: string): Promise<string> {
+    async callAI(prompt: string, images?: Array<{ base64: string; mediaType: string }>): Promise<string> {
         switch (this.settings.aiProvider) {
             case 'anthropic':
-                return this.callAnthropic(prompt);
+                return this.callAnthropic(prompt, images);
             case 'openai':
-                return this.callOpenAI(prompt);
+                return this.callOpenAI(prompt); // TODO: add image support
             case 'google':
-                return this.callGoogle(prompt);
+                return this.callGoogle(prompt); // TODO: add image support
             case 'openrouter':
-                return this.callOpenRouter(prompt);
+                return this.callOpenRouter(prompt); // TODO: add image support
             case 'ollama':
                 return this.callOllama(prompt);
             case 'manual':
@@ -1156,11 +1156,73 @@ export default class KantataSync extends Plugin {
                 throw new Error(`Unknown AI provider: ${this.settings.aiProvider}`);
         }
     }
+    /**
+     * Extract image paths from note content (Obsidian format)
+     */
+    extractImagePaths(content: string, file: any): string[] {
+        const images: string[] = [];
+        
+        // Match ![[image.png]] or ![[folder/image.png]]
+        const wikiLinkRegex = /!\[\[([^\]]+\.(png|jpg|jpeg|gif|webp))\]\]/gi;
+        let match;
+        while ((match = wikiLinkRegex.exec(content)) !== null) {
+            images.push(match[1]);
+        }
+        
+        // Match ![alt](path.png)
+        const mdLinkRegex = /!\[[^\]]*\]\(([^)]+\.(png|jpg|jpeg|gif|webp))\)/gi;
+        while ((match = mdLinkRegex.exec(content)) !== null) {
+            images.push(match[1]);
+        }
+        
+        return images;
+    }
 
     /**
-     * Call Anthropic API
+     * Read image file as base64
      */
-    async callAnthropic(prompt: string): Promise<string> {
+    async readImageAsBase64(imagePath: string, noteFile: any): Promise<{ base64: string; mediaType: string } | null> {
+        try {
+            // Resolve path relative to note's folder or vault root
+            let fullPath = imagePath;
+            if (!imagePath.startsWith('/')) {
+                // Try note's folder first (for Attachments subfolder)
+                const noteFolder = noteFile.parent?.path || '';
+                const possiblePaths = [
+                    `${noteFolder}/${imagePath}`,
+                    `${noteFolder}/Attachments/${imagePath}`,
+                    imagePath
+                ];
+                
+                for (const path of possiblePaths) {
+                    const file = this.app.vault.getAbstractFileByPath(path);
+                    if (file) {
+                        fullPath = path;
+                        break;
+                    }
+                }
+            }
+            
+            const imageFile = this.app.vault.getAbstractFileByPath(fullPath);
+            if (!imageFile) {
+                console.log(`[KantataSync] Image not found: ${fullPath}`);
+                return null;
+            }
+            
+            const arrayBuffer = await this.app.vault.readBinary(imageFile as any);
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            
+            const ext = imagePath.split('.').pop()?.toLowerCase() || 'png';
+            const mediaType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+            
+            return { base64, mediaType };
+        } catch (e) {
+            console.error(`[KantataSync] Failed to read image: ${imagePath}`, e);
+            return null;
+        }
+    }
+
+    async callAnthropic(prompt: string, images?: Array<{ base64: string; mediaType: string }>): Promise<string> {
         if (!this.settings.anthropicApiKey) {
             throw new Error('Anthropic API key not configured');
         }
@@ -1171,6 +1233,26 @@ export default class KantataSync extends Plugin {
             'x-api-key': this.settings.anthropicApiKey
         };
 
+        // Build message content - text and optional images
+        const content: any[] = [];
+        
+        // Add images first if provided
+        if (images && images.length > 0) {
+            for (const img of images) {
+                content.push({
+                    type: 'image',
+                    source: {
+                        type: 'base64',
+                        media_type: img.mediaType,
+                        data: img.base64
+                    }
+                });
+            }
+        }
+        
+        // Add text prompt
+        content.push({ type: 'text', text: prompt });
+
         // Use throw: false so we can read error response body
         const response = await requestUrl({
             url: 'https://api.anthropic.com/v1/messages',
@@ -1178,8 +1260,8 @@ export default class KantataSync extends Plugin {
             headers,
             body: JSON.stringify({
                 model: this.settings.anthropicModel || 'claude-sonnet-4-20250514',
-                max_tokens: 500,
-                messages: [{ role: 'user', content: prompt }]
+                max_tokens: 1000,
+                messages: [{ role: 'user', content }]
             }),
             throw: false
         });
@@ -1502,7 +1584,7 @@ OUTPUT:`;
     /**
      * Full template organization with meeting details
      */
-    async organizeNotesWithTemplate(roughNotes: string, customerName: string, originalNotes?: string): Promise<string> {
+    async organizeNotesWithTemplate(roughNotes: string, customerName: string, originalNotes?: string, images?: Array<{ base64: string; mediaType: string }>): Promise<string> {
         const now = new Date();
         const minutes = now.getMinutes();
         const roundedMinutes = Math.round(minutes / 30) * 30;
@@ -1510,18 +1592,22 @@ OUTPUT:`;
         const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-        const prompt = `Organize these rough work notes into a structured format. Extract and categorize the information.
+        const imageNote = images && images.length > 0 
+            ? `\n\nIMAGES ATTACHED: ${images.length} image(s) included. Look at them for attendee names, meeting participants, screenshots, etc.`
+            : '';
+
+        const prompt = `Organize these rough work notes into a structured format. Extract and categorize the information.${imageNote}
 
 ROUGH NOTES:
 ${roughNotes}
 
-OUTPUT FORMAT (fill in based on the notes, leave sections empty with "-" if no relevant info):
+OUTPUT FORMAT (fill in based on the notes AND any attached images, leave sections empty with "-" if no relevant info):
 
 ==**Meeting Details**==
 **Customer:** ${customerName}
 **Work Session:** ${dateStr} @ ${timeStr} CST
 **Netwrix Attendees:** Adam Sneed
-**${customerName} Attendees:** [extract from notes or leave blank]
+**${customerName} Attendees:** [extract from notes OR images - look for participant names in screenshots]
 
 ==**Activities/Notes**==
 
@@ -1547,7 +1633,7 @@ OUTPUT FORMAT (fill in based on the notes, leave sections empty with "-" if no r
 
 Generate ONLY the formatted output, no explanations:`;
 
-        let formatted = await this.callAI(prompt);
+        let formatted = await this.callAI(prompt, images);
         formatted = formatted.trim();
         
         // Append original notes to Internal Notes section
@@ -2649,8 +2735,23 @@ ${teamMembers}
         try {
             new Notice('🤖 Organizing notes with AI...');
             
-            // Organize with AI, passing original notes to include in Internal Notes
-            const organized = await this.organizeNotesWithTemplate(body, customerName, body.trim());
+            // Extract and read images from note
+            const imagePaths = this.extractImagePaths(body, file);
+            const images: Array<{ base64: string; mediaType: string }> = [];
+            
+            if (imagePaths.length > 0) {
+                console.log(`[KantataSync] Found ${imagePaths.length} images in note`);
+                for (const imgPath of imagePaths.slice(0, 5)) { // Limit to 5 images
+                    const imgData = await this.readImageAsBase64(imgPath, file);
+                    if (imgData) {
+                        images.push(imgData);
+                        console.log(`[KantataSync] Loaded image: ${imgPath}`);
+                    }
+                }
+            }
+            
+            // Organize with AI, passing original notes and images
+            const organized = await this.organizeNotesWithTemplate(body, customerName, body.trim(), images);
             
             // Replace content (keep frontmatter)
             editor.setValue(frontmatter + organized);
