@@ -207,6 +207,135 @@ class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
     }
 }
 
+// Manual Time Entry Modal
+interface TaskOption {
+    id: string;
+    title: string;
+}
+
+class ManualTimeEntryModal extends Modal {
+    private plugin: KantataSync;
+    private workspaceId: string;
+    private tasks: TaskOption[] = [];
+    private selectedTaskId: string = '';
+    private selectedHours: number = 1;
+    private notes: string = '';
+    private onSubmit: (taskId: string, hours: number, notes: string) => void;
+
+    constructor(app: App, plugin: KantataSync, workspaceId: string, tasks: TaskOption[], onSubmit: (taskId: string, hours: number, notes: string) => void) {
+        super(app);
+        this.plugin = plugin;
+        this.workspaceId = workspaceId;
+        this.tasks = tasks;
+        this.onSubmit = onSubmit;
+        if (tasks.length > 0) {
+            this.selectedTaskId = tasks[0].id;
+        }
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('kantata-time-entry-modal');
+
+        contentEl.createEl('h2', { text: 'Manual Time Entry' });
+
+        // Task selection
+        const taskSetting = contentEl.createDiv({ cls: 'setting-item' });
+        taskSetting.createEl('div', { cls: 'setting-item-info' }).createEl('div', { cls: 'setting-item-name', text: 'Task' });
+        const taskControl = taskSetting.createDiv({ cls: 'setting-item-control' });
+        const taskSelect = taskControl.createEl('select', { cls: 'dropdown' });
+        for (const task of this.tasks) {
+            const option = taskSelect.createEl('option', { value: task.id, text: task.title });
+            if (task.id === this.selectedTaskId) {
+                option.selected = true;
+            }
+        }
+        taskSelect.addEventListener('change', (e) => {
+            this.selectedTaskId = (e.target as HTMLSelectElement).value;
+        });
+
+        // Time selection (15-minute increments)
+        const timeSetting = contentEl.createDiv({ cls: 'setting-item' });
+        timeSetting.createEl('div', { cls: 'setting-item-info' }).createEl('div', { cls: 'setting-item-name', text: 'Time' });
+        const timeControl = timeSetting.createDiv({ cls: 'setting-item-control' });
+        const timeSelect = timeControl.createEl('select', { cls: 'dropdown' });
+        const timeOptions = [
+            { value: 0.25, label: '15 minutes' },
+            { value: 0.5, label: '30 minutes' },
+            { value: 0.75, label: '45 minutes' },
+            { value: 1, label: '1 hour' },
+            { value: 1.25, label: '1 hr 15 min' },
+            { value: 1.5, label: '1 hr 30 min' },
+            { value: 1.75, label: '1 hr 45 min' },
+            { value: 2, label: '2 hours' },
+            { value: 2.5, label: '2 hr 30 min' },
+            { value: 3, label: '3 hours' },
+            { value: 3.5, label: '3 hr 30 min' },
+            { value: 4, label: '4 hours' },
+            { value: 4.5, label: '4 hr 30 min' },
+            { value: 5, label: '5 hours' },
+            { value: 5.5, label: '5 hr 30 min' },
+            { value: 6, label: '6 hours' },
+            { value: 6.5, label: '6 hr 30 min' },
+            { value: 7, label: '7 hours' },
+            { value: 7.5, label: '7 hr 30 min' },
+            { value: 8, label: '8 hours' },
+        ];
+        for (const opt of timeOptions) {
+            const option = timeSelect.createEl('option', { value: String(opt.value), text: opt.label });
+            if (opt.value === this.selectedHours) {
+                option.selected = true;
+            }
+        }
+        timeSelect.addEventListener('change', (e) => {
+            this.selectedHours = parseFloat((e.target as HTMLSelectElement).value);
+        });
+
+        // Notes field
+        const notesSetting = contentEl.createDiv({ cls: 'setting-item' });
+        notesSetting.createEl('div', { cls: 'setting-item-info' }).createEl('div', { cls: 'setting-item-name', text: 'Notes' });
+        const notesControl = notesSetting.createDiv({ cls: 'setting-item-control' });
+        const notesInput = notesControl.createEl('textarea', { 
+            cls: 'kantata-notes-input',
+            attr: { rows: '4', placeholder: 'Describe work completed...' }
+        });
+        notesInput.style.width = '100%';
+        notesInput.addEventListener('input', (e) => {
+            this.notes = (e.target as HTMLTextAreaElement).value;
+        });
+
+        // Submit button
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+        buttonContainer.style.marginTop = '20px';
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.style.gap = '10px';
+
+        const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+        cancelBtn.addEventListener('click', () => this.close());
+
+        const submitBtn = buttonContainer.createEl('button', { text: 'Create Time Entry', cls: 'mod-cta' });
+        submitBtn.addEventListener('click', () => {
+            if (!this.selectedTaskId) {
+                new Notice('Please select a task');
+                return;
+            }
+            if (!this.notes.trim()) {
+                new Notice('Please enter notes');
+                return;
+            }
+            this.onSubmit(this.selectedTaskId, this.selectedHours, this.notes.trim());
+            this.close();
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 export default class KantataSync extends Plugin {
     settings!: KantataSettings;
     workspaceCache: Record<string, WorkspaceCacheEntry> = {};
@@ -294,6 +423,14 @@ export default class KantataSync extends Plugin {
             name: 'Undo last time entry',
             callback: async () => {
                 await this.undoLastTimeEntry();
+            }
+        });
+
+        this.addCommand({
+            id: 'manual-time-entry',
+            name: 'Manual: Create time entry',
+            callback: async () => {
+                await this.openManualTimeEntryModal();
             }
         });
 
@@ -2723,6 +2860,96 @@ ${teamMembers}
         } catch (e: any) {
             new Notice(`❌ Failed to undo: ${e.message}`);
         }
+    }
+
+    /**
+     * Open manual time entry modal
+     */
+    async openManualTimeEntryModal(): Promise<void> {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+            new Notice('❌ No active file - open a note in a linked folder');
+            return;
+        }
+
+        // Find linked workspace
+        const cacheResult = this.findCacheEntry(file);
+        if (!cacheResult) {
+            new Notice('❌ Folder not linked to Kantata workspace');
+            return;
+        }
+
+        const workspaceId = cacheResult.entry.workspaceId;
+        new Notice('📋 Loading tasks...');
+
+        try {
+            // Fetch tasks/stories for this workspace
+            const tasks = await this.getWorkspaceTasks(workspaceId);
+            
+            if (tasks.length === 0) {
+                new Notice('❌ No tasks found in workspace - create a task in Kantata first');
+                return;
+            }
+
+            // Open modal
+            const modal = new ManualTimeEntryModal(
+                this.app,
+                this,
+                workspaceId,
+                tasks,
+                async (taskId, hours, notes) => {
+                    try {
+                        new Notice('⏱️ Creating time entry...');
+                        const userId = await this.getCurrentUserId();
+                        const today = new Date().toISOString().split('T')[0];
+                        
+                        const timeEntryId = await this.createTimeEntry(workspaceId, userId, taskId, {
+                            date: today,
+                            hours: hours,
+                            notes: notes
+                        });
+
+                        // Store for undo
+                        this.lastTimeEntry = {
+                            id: timeEntryId,
+                            workspaceId: workspaceId,
+                            data: { taskId, hours, notes }
+                        };
+
+                        new Notice(`✅ Time entry created! ${hours} hours logged`);
+
+                        // Update frontmatter if we have an active file
+                        const activeFile = this.app.workspace.getActiveFile();
+                        if (activeFile) {
+                            await this.updateFrontmatter(activeFile, {
+                                kantata_time_entry_id: timeEntryId,
+                                kantata_time_synced_at: new Date().toISOString(),
+                                kantata_synced_at: new Date().toISOString()
+                            });
+                            setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
+                        }
+                    } catch (e: any) {
+                        new Notice(`❌ Failed to create time entry: ${e.message}`);
+                    }
+                }
+            );
+            modal.open();
+        } catch (e: any) {
+            new Notice(`❌ Failed to load tasks: ${e.message}`);
+        }
+    }
+
+    /**
+     * Get tasks/stories for a workspace
+     */
+    async getWorkspaceTasks(workspaceId: string): Promise<TaskOption[]> {
+        const response = await this.kantataRequest(`/stories.json?workspace_id=${workspaceId}&per_page=100`);
+        const stories = response.stories || [];
+        
+        return stories.map((story: any) => ({
+            id: story.id.toString(),
+            title: story.title || `Task ${story.id}`
+        }));
     }
 
     /**
