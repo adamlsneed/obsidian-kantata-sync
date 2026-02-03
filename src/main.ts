@@ -1390,6 +1390,10 @@ export default class KantataSync extends Plugin {
 
         try {
             const response = await requestUrl(options);
+            // DELETE requests may return empty body
+            if (method === 'DELETE') {
+                return { success: true };
+            }
             return response.json;
         } catch (e: any) {
             const status = e.status || 'unknown';
