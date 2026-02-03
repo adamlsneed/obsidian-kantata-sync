@@ -145,6 +145,7 @@ interface KantataSettings {
     menuShowManualTimeEntry: boolean;
     menuShowChangeStatus: boolean;
     menuShowOpenInKantata: boolean;
+    menuShowDeleteFromKantata: boolean;
     menuOrder: string[];
 }
 
@@ -226,7 +227,8 @@ blue:Closed,Cancelled,Cancelled Confirmed,Completed,Delivered,Done,Submitted`,
     menuShowManualTimeEntry: true,
     menuShowChangeStatus: true,
     menuShowOpenInKantata: true,
-    menuOrder: ['aiOrganize', 'syncNote', 'aiTimeEntry', 'manualTimeEntry', 'changeStatus', 'openInKantata'],
+    menuShowDeleteFromKantata: true,
+    menuOrder: ['aiOrganize', 'syncNote', 'aiTimeEntry', 'manualTimeEntry', 'changeStatus', 'separator-1', 'openInKantata', 'deleteFromKantata'],
 };
 
 class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
@@ -548,6 +550,55 @@ export default class KantataSync extends Plugin {
     // Cache TTL: 24 hours
     private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
+    // Secret storage keys
+    private readonly SECRET_KEYS = {
+        kantataToken: 'kantata-token',
+        anthropicApiKey: 'anthropic-api-key',
+        openaiApiKey: 'openai-api-key',
+        googleApiKey: 'google-api-key',
+        openrouterApiKey: 'openrouter-api-key',
+    } as const;
+
+    /**
+     * Get a secret from SecretStorage
+     */
+    getSecret(key: keyof typeof this.SECRET_KEYS): string | null {
+        return this.app.secretStorage.getSecret(this.SECRET_KEYS[key]);
+    }
+
+    /**
+     * Set a secret in SecretStorage
+     */
+    setSecret(key: keyof typeof this.SECRET_KEYS, value: string): void {
+        if (value) {
+            this.app.secretStorage.setSecret(this.SECRET_KEYS[key], value);
+        }
+    }
+
+    /**
+     * Migrate API keys from settings to SecretStorage (one-time migration)
+     */
+    private async migrateSecretsToStorage(): Promise<void> {
+        let migrated = false;
+        
+        for (const [settingsKey, storageKey] of Object.entries(this.SECRET_KEYS)) {
+            const settingsValue = (this.settings as any)[settingsKey];
+            const storedValue = this.app.secretStorage.getSecret(storageKey);
+            
+            if (settingsValue && !storedValue) {
+                this.app.secretStorage.setSecret(storageKey, settingsValue);
+                (this.settings as any)[settingsKey] = '';
+                migrated = true;
+                console.log(`[KantataSync] Migrated ${settingsKey} to SecretStorage`);
+            }
+        }
+        
+        if (migrated) {
+            await this.saveSettings();
+            new Notice('🔐 KantataSync: API keys migrated to secure storage');
+        }
+    }
+
     /**
      * Check if a cache entry is still valid (not expired)
      */
@@ -571,6 +622,7 @@ export default class KantataSync extends Plugin {
 
     async onload(): Promise<void> {
         await this.loadSettings();
+        await this.migrateSecretsToStorage();
         await this.loadWorkspaceCache();
         await this.cleanupStaleCache();  // Remove entries for deleted folders
 
@@ -730,7 +782,7 @@ export default class KantataSync extends Plugin {
                 syncNote: () => {
                     if (this.settings.menuShowSyncNote) {
                         menu.addItem((item) => {
-                            const title = isSynced ? '📝 Update Note in Kantata' : '📝 Sync Note to Kantata';
+                            const title = isSynced ? '📝 Update in Kantata' : '📝 Sync in Kantata';
                             item.setTitle(title)
                                 .onClick(async () => {
                                     await this.syncCurrentNote();
@@ -788,11 +840,22 @@ export default class KantataSync extends Plugin {
                 },
                 openInKantata: () => {
                     if (this.settings.menuShowOpenInKantata) {
-                        menu.addSeparator();
                         menu.addItem((item) => {
                             item.setTitle('🔗 Open in Kantata')
                                 .onClick(async () => {
                                     await this.openInKantata();
+                                });
+                        });
+                        return true;
+                    }
+                    return false;
+                },
+                deleteFromKantata: () => {
+                    if (this.settings.menuShowDeleteFromKantata && isSynced) {
+                        menu.addItem((item) => {
+                            item.setTitle('🗑️ Delete from Kantata')
+                                .onClick(async () => {
+                                    await this.deleteFromKantata();
                                 });
                         });
                         return true;
@@ -804,7 +867,9 @@ export default class KantataSync extends Plugin {
             // Build menu in user-defined order
             const order = this.settings.menuOrder || Object.keys(menuBuilders);
             for (const key of order) {
-                if (menuBuilders[key]) {
+                if (key.startsWith('separator-')) {
+                    menu.addSeparator();
+                } else if (menuBuilders[key]) {
                     menuBuilders[key]();
                 }
             }
@@ -834,7 +899,7 @@ export default class KantataSync extends Plugin {
         this.addSettingTab(new KantataSettingTab(this.app, this));
 
         // Auto-sync on startup
-        if (this.settings.autoSyncFoldersOnStartup && this.settings.kantataToken) {
+        if (this.settings.autoSyncFoldersOnStartup && this.getSecret('kantataToken')) {
             setTimeout(async () => {
                 await this.autoSyncFolders();
             }, 3000);
@@ -857,7 +922,7 @@ export default class KantataSync extends Plugin {
     setupPolling(): void {
         this.stopPolling();
         
-        if (this.settings.enablePolling && this.settings.kantataToken) {
+        if (this.settings.enablePolling && this.getSecret('kantataToken')) {
             const intervalMs = this.settings.pollingIntervalMinutes * 60 * 1000;
             console.log(`[KantataSync] Starting polling every ${this.settings.pollingIntervalMinutes} minutes`);
             
@@ -929,7 +994,7 @@ export default class KantataSync extends Plugin {
     }
 
     async syncWorkspaces(showNotice = false): Promise<void> {
-        if (!this.settings.kantataToken) {
+        if (!this.getSecret('kantataToken')) {
             if (showNotice) new Notice('❌ No Kantata token configured');
             console.log('[KantataSync] Sync skipped - no token');
             return;
@@ -1615,6 +1680,10 @@ export default class KantataSync extends Plugin {
         delete this.workspaceCache[cacheResult.path];
         await this.saveWorkspaceCache();
         new Notice(`🔓 Unlinked "${cacheResult.path}" from "${cacheResult.entry.workspaceTitle}"`);
+        
+        // Refresh status bar and ribbon icons
+        await this.updateStatusBarForFile(file);
+        await this.updateRibbonIcons(file);
     }
 
     async autoSyncFolders(): Promise<void> {
@@ -1642,7 +1711,7 @@ export default class KantataSync extends Plugin {
         }
         
         await this.rateLimitedDelay();
-        if (!this.settings.kantataToken) {
+        if (!this.getSecret('kantataToken')) {
             throw new Error('Kantata token not configured. Go to Settings → KantataSync');
         }
 
@@ -1650,7 +1719,7 @@ export default class KantataSync extends Plugin {
             url: `${this.settings.apiBaseUrl}${endpoint}`,
             method,
             headers: {
-                'Authorization': `Bearer ${this.settings.kantataToken}`,
+                'Authorization': `Bearer ${this.getSecret('kantataToken')}`,
                 'Content-Type': 'application/json'
             }
         };
@@ -1833,14 +1902,14 @@ export default class KantataSync extends Plugin {
     }
 
     async callAnthropic(prompt: string, images?: Array<{ base64: string; mediaType: string }>): Promise<string> {
-        if (!this.settings.anthropicApiKey) {
+        if (!this.getSecret('anthropicApiKey')) {
             throw new Error('Anthropic API key not configured');
         }
 
         const headers: Record<string, string> = {
             'content-type': 'application/json',
             'anthropic-version': '2023-06-01',
-            'x-api-key': this.settings.anthropicApiKey
+            'x-api-key': this.getSecret('anthropicApiKey')
         };
 
         // Build message content - text and optional images
@@ -1906,7 +1975,7 @@ export default class KantataSync extends Plugin {
      * Call OpenAI API
      */
     async callOpenAI(prompt: string): Promise<string> {
-        if (!this.settings.openaiApiKey) {
+        if (!this.getSecret('openaiApiKey')) {
             throw new Error('OpenAI API key not configured');
         }
 
@@ -1915,7 +1984,7 @@ export default class KantataSync extends Plugin {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.settings.openaiApiKey}`
+                'Authorization': `Bearer ${this.getSecret('openaiApiKey')}`
             },
             body: JSON.stringify({
                 model: this.settings.openaiModel || 'gpt-4o',
@@ -1935,13 +2004,13 @@ export default class KantataSync extends Plugin {
      * Call Google AI (Gemini) API
      */
     async callGoogle(prompt: string): Promise<string> {
-        if (!this.settings.googleApiKey) {
+        if (!this.getSecret('googleApiKey')) {
             throw new Error('Google AI API key not configured');
         }
 
         const model = this.settings.googleModel || 'gemini-1.5-flash';
         const response = await requestUrl({
-            url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.googleApiKey}`,
+            url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.getSecret('googleApiKey')}`,
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1966,7 +2035,7 @@ export default class KantataSync extends Plugin {
      * Call OpenRouter API - access to many models with one API key
      */
     async callOpenRouter(prompt: string): Promise<string> {
-        if (!this.settings.openrouterApiKey) {
+        if (!this.getSecret('openrouterApiKey')) {
             throw new Error('OpenRouter API key not configured');
         }
 
@@ -1975,7 +2044,7 @@ export default class KantataSync extends Plugin {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.settings.openrouterApiKey}`,
+                'Authorization': `Bearer ${this.getSecret('openrouterApiKey')}`,
                 'HTTP-Referer': 'https://obsidian.md',
                 'X-Title': 'KantataSync'
             },
@@ -2386,13 +2455,13 @@ OUTPUT:`;
     hasAiCredentials(): boolean {
         switch (this.settings.aiProvider) {
             case 'anthropic':
-                return !!(this.settings.anthropicApiKey || this.settings.anthropicOAuthToken);
+                return !!this.getSecret('anthropicApiKey');
             case 'openai':
-                return !!this.settings.openaiApiKey;
+                return !!this.getSecret('openaiApiKey');
             case 'google':
-                return !!this.settings.googleApiKey;
+                return !!this.getSecret('googleApiKey');
             case 'openrouter':
-                return !!this.settings.openrouterApiKey;
+                return !!this.getSecret('openrouterApiKey');
             case 'ollama':
                 return true; // No API key needed
             case 'manual':
@@ -2996,6 +3065,54 @@ ${teamMembers}
         await this.apiRequest(`/posts/${postId}.json`, 'PUT', {
             post: { message }
         });
+    }
+
+    async deletePost(postId: string): Promise<void> {
+        await this.apiRequest(`/posts/${postId}.json`, 'DELETE');
+    }
+
+    /**
+     * Delete the synced post from Kantata
+     */
+    async deleteFromKantata(): Promise<void> {
+        const file = this.app.workspace.getActiveFile();
+        if (!file) {
+            new Notice('❌ No active file');
+            return;
+        }
+
+        const content = await this.app.vault.read(file);
+        const { frontmatter } = this.parseFrontmatter(content);
+        
+        if (!frontmatter.kantata_post_id) {
+            new Notice('❌ This note has not been synced to Kantata');
+            return;
+        }
+
+        // Confirm deletion
+        if (!confirm('Delete this post from Kantata? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            new Notice('🗑️ Deleting from Kantata...');
+            await this.deletePost(frontmatter.kantata_post_id);
+            
+            // Clear sync frontmatter
+            await this.updateFrontmatter(file, {
+                kantata_synced: false,
+                kantata_post_id: null,
+                kantata_synced_at: null
+            });
+            
+            new Notice('✅ Post deleted from Kantata');
+            
+            // Refresh status bar
+            await this.updateStatusBarForFile(file);
+            await this.updateRibbonIcons(file);
+        } catch (e: any) {
+            new Notice(`❌ Failed to delete: ${e.message}`);
+        }
     }
 
     parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
@@ -4000,13 +4117,12 @@ class KantataSettingTab extends PluginSettingTab {
         // API Settings
         new Setting(containerEl)
             .setName('Kantata API Token')
-            .setDesc('Your Kantata/Mavenlink OAuth token')
+            .setDesc('Your Kantata/Mavenlink OAuth token (stored securely)')
             .addText(text => {
                 text.setPlaceholder('Enter your token')
-                    .setValue(this.plugin.settings.kantataToken)
+                    .setValue(this.plugin.getSecret('kantataToken') || '')
                     .onChange(async (value) => {
-                        this.plugin.settings.kantataToken = value;
-                        await this.plugin.saveSettings();
+                        this.plugin.setSecret('kantataToken', value);
                     });
                 text.inputEl.type = 'password';
             });
@@ -4299,14 +4415,13 @@ class KantataSettingTab extends PluginSettingTab {
                         text: 'console.anthropic.com',
                         href: 'https://console.anthropic.com/settings/keys'
                     });
-                    frag.appendText(' (starts with sk-ant-api03-...)');
+                    frag.appendText(' (stored securely)');
                 }))
                 .addText(text => text
                     .setPlaceholder('sk-ant-api03-...')
-                    .setValue(this.plugin.settings.anthropicApiKey)
+                    .setValue(this.plugin.getSecret('anthropicApiKey') || '')
                     .onChange(async (value) => {
-                        this.plugin.settings.anthropicApiKey = value;
-                        await this.plugin.saveSettings();
+                        this.plugin.setSecret('anthropicApiKey', value);
                     })
                     .inputEl.type = 'password');
 
@@ -4328,13 +4443,12 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'openai') {
             new Setting(containerEl)
                 .setName('OpenAI API Key')
-                .setDesc('Get from platform.openai.com (starts with sk-...)')
+                .setDesc('Get from platform.openai.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
-                    .setValue(this.plugin.settings.openaiApiKey)
+                    .setValue(this.plugin.getSecret('openaiApiKey') || '')
                     .onChange(async (value) => {
-                        this.plugin.settings.openaiApiKey = value;
-                        await this.plugin.saveSettings();
+                        this.plugin.setSecret('openaiApiKey', value);
                     })
                     .inputEl.type = 'password');
 
@@ -4355,13 +4469,12 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'google') {
             new Setting(containerEl)
                 .setName('Google AI API Key')
-                .setDesc('Get from aistudio.google.com')
+                .setDesc('Get from aistudio.google.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('AIza...')
-                    .setValue(this.plugin.settings.googleApiKey)
+                    .setValue(this.plugin.getSecret('googleApiKey') || '')
                     .onChange(async (value) => {
-                        this.plugin.settings.googleApiKey = value;
-                        await this.plugin.saveSettings();
+                        this.plugin.setSecret('googleApiKey', value);
                     })
                     .inputEl.type = 'password');
 
@@ -4383,13 +4496,12 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'openrouter') {
             new Setting(containerEl)
                 .setName('OpenRouter API Key')
-                .setDesc('Get from openrouter.ai/keys')
+                .setDesc('Get from openrouter.ai/keys (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-or-v1-...')
-                    .setValue(this.plugin.settings.openrouterApiKey)
+                    .setValue(this.plugin.getSecret('openrouterApiKey') || '')
                     .onChange(async (value) => {
-                        this.plugin.settings.openrouterApiKey = value;
-                        await this.plugin.saveSettings();
+                        this.plugin.setSecret('openrouterApiKey', value);
                     })
                     .inputEl.type = 'password');
 
@@ -4544,12 +4656,15 @@ class KantataSettingTab extends PluginSettingTab {
             manualTimeEntry: { name: 'Manual Time Entry', desc: 'Create/edit time entry manually', key: 'menuShowManualTimeEntry' },
             changeStatus: { name: 'Change Project Status', desc: 'Change workspace status', key: 'menuShowChangeStatus' },
             openInKantata: { name: 'Open in Kantata', desc: 'Open workspace in Kantata', key: 'menuShowOpenInKantata' },
+            deleteFromKantata: { name: 'Delete from Kantata', desc: 'Delete synced post from Kantata', key: 'menuShowDeleteFromKantata' },
         };
 
-        // Ensure menuOrder contains all items (migration safety)
-        const allKeys = Object.keys(menuItems);
-        if (!this.plugin.settings.menuOrder || this.plugin.settings.menuOrder.length !== allKeys.length) {
-            this.plugin.settings.menuOrder = allKeys;
+        // Ensure menuOrder contains all menu items (migration safety)
+        const allMenuKeys = Object.keys(menuItems);
+        for (const key of allMenuKeys) {
+            if (!this.plugin.settings.menuOrder.includes(key)) {
+                this.plugin.settings.menuOrder.push(key);
+            }
         }
 
         // Create sortable container
@@ -4562,8 +4677,11 @@ class KantataSettingTab extends PluginSettingTab {
             sortableContainer.empty();
             
             for (const itemKey of this.plugin.settings.menuOrder) {
+                const isSeparator = itemKey.startsWith('separator-');
                 const item = menuItems[itemKey];
-                if (!item) continue;
+                
+                // Skip unknown non-separator items
+                if (!isSeparator && !item) continue;
 
                 const row = sortableContainer.createDiv({ cls: 'kantata-menu-row setting-item' });
                 row.draggable = true;
@@ -4575,24 +4693,43 @@ class KantataSettingTab extends PluginSettingTab {
                 handle.style.cssText = 'margin-right: 12px; color: var(--text-muted); font-size: 16px; user-select: none;';
                 handle.textContent = '⋮⋮';
 
-                // Text container
-                const textContainer = row.createDiv({ cls: 'setting-item-info' });
-                textContainer.style.cssText = 'flex: 1;';
-                textContainer.createDiv({ cls: 'setting-item-name', text: item.name });
-                textContainer.createDiv({ cls: 'setting-item-description', text: item.desc });
+                if (isSeparator) {
+                    // Separator row
+                    const textContainer = row.createDiv({ cls: 'setting-item-info' });
+                    textContainer.style.cssText = 'flex: 1; display: flex; align-items: center;';
+                    const line = textContainer.createEl('hr');
+                    line.style.cssText = 'flex: 1; border: none; border-top: 1px solid var(--text-muted); margin: 0 10px;';
+                    textContainer.createSpan({ text: 'Separator', cls: 'setting-item-description' });
+                    
+                    // Delete button for separator
+                    const deleteBtn = row.createEl('button', { text: '✕' });
+                    deleteBtn.style.cssText = 'background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px;';
+                    deleteBtn.onclick = async (e) => {
+                        e.stopPropagation();
+                        this.plugin.settings.menuOrder = this.plugin.settings.menuOrder.filter(k => k !== itemKey);
+                        await this.plugin.saveSettings();
+                        renderMenuItems();
+                    };
+                } else {
+                    // Regular menu item
+                    const textContainer = row.createDiv({ cls: 'setting-item-info' });
+                    textContainer.style.cssText = 'flex: 1;';
+                    textContainer.createDiv({ cls: 'setting-item-name', text: item.name });
+                    textContainer.createDiv({ cls: 'setting-item-description', text: item.desc });
 
-                // Toggle
-                const toggleContainer = row.createDiv({ cls: 'setting-item-control' });
-                const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container' });
-                toggle.classList.toggle('is-enabled', this.plugin.settings[item.key] as boolean);
-                toggle.style.cssText = 'cursor: pointer;';
-                toggle.onclick = async (e) => {
-                    e.stopPropagation();
-                    const newValue = !this.plugin.settings[item.key];
-                    (this.plugin.settings as any)[item.key] = newValue;
-                    toggle.classList.toggle('is-enabled', newValue);
-                    await this.plugin.saveSettings();
-                };
+                    // Toggle
+                    const toggleContainer = row.createDiv({ cls: 'setting-item-control' });
+                    const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container' });
+                    toggle.classList.toggle('is-enabled', this.plugin.settings[item.key] as boolean);
+                    toggle.style.cssText = 'cursor: pointer;';
+                    toggle.onclick = async (e) => {
+                        e.stopPropagation();
+                        const newValue = !this.plugin.settings[item.key];
+                        (this.plugin.settings as any)[item.key] = newValue;
+                        toggle.classList.toggle('is-enabled', newValue);
+                        await this.plugin.saveSettings();
+                    };
+                }
 
                 // Drag events
                 row.ondragstart = (e) => {
@@ -4658,6 +4795,20 @@ class KantataSettingTab extends PluginSettingTab {
         };
 
         renderMenuItems();
+
+        // Add Separator button
+        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add Separator' });
+        addSeparatorBtn.style.cssText = 'margin-top: 8px; margin-bottom: 16px;';
+        addSeparatorBtn.onclick = async () => {
+            // Generate unique separator ID
+            let num = 1;
+            while (this.plugin.settings.menuOrder.includes(`separator-${num}`)) {
+                num++;
+            }
+            this.plugin.settings.menuOrder.push(`separator-${num}`);
+            await this.plugin.saveSettings();
+            renderMenuItems();
+        };
 
         // Cache Management
         containerEl.createEl('h3', { text: 'Cache Management' });
