@@ -2680,10 +2680,11 @@ ${teamMembers}
         const result = await this.processAiTimeEntry(workspaceId, cleanBody, customerName);
 
         if (result.success && result.timeEntryId) {
-            // Save time entry ID to frontmatter
+            // Save time entry ID to frontmatter (also update synced_at to prevent "out of sync" status)
             await this.updateFrontmatter(file, {
                 kantata_time_entry_id: result.timeEntryId,
-                kantata_time_synced_at: new Date().toISOString()
+                kantata_time_synced_at: new Date().toISOString(),
+                kantata_synced_at: new Date().toISOString()
             });
             new Notice(`✅ Time entry created! ID: ${result.timeEntryId}`);
             this.updateStatusBar('⏱️ Time: ✅', 'Time entry created');
