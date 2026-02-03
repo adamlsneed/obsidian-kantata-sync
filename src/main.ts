@@ -3105,12 +3105,12 @@ class KantataSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // AI Time Entry
-        containerEl.createEl('h3', { text: 'AI Time Entry' });
+        // AI Features
+        containerEl.createEl('h3', { text: 'AI Features' });
 
         new Setting(containerEl)
-            .setName('Enable AI Time Entry')
-            .setDesc('Automatically create time entries when notes sync to Kantata')
+            .setName('Enable AI Features')
+            .setDesc('Enable AI-powered note organization and time entry creation')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enableAiTimeEntry)
                 .onChange(async (value) => {
