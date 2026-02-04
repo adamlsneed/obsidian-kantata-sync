@@ -247,7 +247,7 @@ class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
         }, 50);
     }
 
-    async waitForSelection(): Promise<Workspace | null> {
+    waitForSelection(): Promise<Workspace | null> {
         return new Promise((resolve) => {
             this.resolvePromise = resolve;
             this.open();
@@ -645,88 +645,88 @@ export default class KantataSync extends Plugin {
         this.addCommand({
             id: 'sync-current-note',
             name: 'Sync current note to Kantata',
-            editorCallback: async (editor, view) => {
-                await this.syncCurrentNote();
+            editorCallback: (editor, view) => {
+                void this.syncCurrentNote();
             }
         });
 
         this.addCommand({
             id: 'open-in-kantata',
             name: 'Open workspace in Kantata',
-            callback: async () => {
-                await this.openInKantata();
+            callback: () => {
+                void this.openInKantata();
             }
         });
 
         this.addCommand({
             id: 'link-folder',
             name: 'Link folder to workspace',
-            callback: async () => {
-                await this.linkFolder();
+            callback: () => {
+                void this.linkFolder();
             }
         });
 
         this.addCommand({
             id: 'unlink-folder',
             name: 'Unlink folder from workspace',
-            callback: async () => {
-                await this.unlinkFolder();
+            callback: () => {
+                void this.unlinkFolder();
             }
         });
 
         this.addCommand({
             id: 'sync-workspaces',
             name: 'Sync workspaces from Kantata',
-            callback: async () => {
-                await this.syncWorkspaces(true);
+            callback: () => {
+                void this.syncWorkspaces(true);
             }
         });
 
         this.addCommand({
             id: 'refresh-dashboard',
             name: 'Refresh dashboard for current folder',
-            callback: async () => {
-                await this.refreshCurrentDashboard();
+            callback: () => {
+                void this.refreshCurrentDashboard();
             }
         });
 
         this.addCommand({
             id: 'refresh-all-dashboards',
             name: 'Refresh all dashboards',
-            callback: async () => {
-                await this.refreshAllDashboards();
+            callback: () => {
+                void this.refreshAllDashboards();
             }
         });
 
         this.addCommand({
             id: 'create-time-entry',
             name: 'AI: Create time entry for current note',
-            editorCallback: async (editor, view) => {
-                await this.createTimeEntryForCurrentNote();
+            editorCallback: (editor, view) => {
+                void this.createTimeEntryForCurrentNote();
             }
         });
 
         this.addCommand({
             id: 'undo-time-entry',
             name: 'Undo last time entry',
-            callback: async () => {
-                await this.undoLastTimeEntry();
+            callback: () => {
+                void this.undoLastTimeEntry();
             }
         });
 
         this.addCommand({
             id: 'manual-time-entry',
             name: 'time entry (Create/Edit)',
-            callback: async () => {
-                await this.openManualTimeEntryModal();
+            callback: () => {
+                void this.openManualTimeEntryModal();
             }
         });
 
         this.addCommand({
             id: 'organize-notes',
             name: 'AI: Organize notes into template',
-            editorCallback: async (editor, view) => {
-                await this.organizeCurrentNote(editor);
+            editorCallback: (editor, view) => {
+                void this.organizeCurrentNote(editor);
             }
         });
 
