@@ -96,7 +96,7 @@ interface KantataSettings {
     archiveFolderName: string;
     archiveStatuses: string[];
     enableAutoUnarchive: boolean;
-    // AI Time Entry
+    // AI time entry
     enableAiTimeEntry: boolean;
     customTemplate: string;
     customStatuses: string;
@@ -154,7 +154,7 @@ const DEFAULT_SETTINGS: KantataSettings = {
     archiveFolderName: '_Archive',
     archiveStatuses: ['Archived', 'Closed', 'Cancelled', 'Cancelled Confirmed', 'Completed', 'Delivered', 'Done', 'Submitted'],
     enableAutoUnarchive: false,
-    // AI Time Entry
+    // AI time entry
     enableAiTimeEntry: false,
     customTemplate: `==**Meeting Details**==
 **Customer:** {{customer}}
@@ -295,7 +295,7 @@ class ConfirmModal extends Modal {
     }
 }
 
-// Manual Time Entry Modal
+// Manual time entry Modal
 interface TaskOption {
     id: string;
     title: string;
@@ -348,7 +348,7 @@ class ManualTimeEntryModal extends Modal {
         contentEl.empty();
         contentEl.addClass('kantata-time-entry-modal');
 
-        contentEl.createEl('h2', { text: this.isEditMode ? 'Edit Time Entry' : 'Create Time Entry' });
+        contentEl.createEl('h2', { text: this.isEditMode ? 'Edit time entry' : 'Create time entry' });
 
         // Task selection
         const taskSetting = contentEl.createDiv({ cls: 'setting-item' });
@@ -419,7 +419,7 @@ class ManualTimeEntryModal extends Modal {
         // AI Enhance button (only if AI is enabled)
         if (this.plugin.settings.enableAiTimeEntry && this.plugin.hasAiCredentials()) {
             const aiButtonContainer = contentEl.createDiv({ cls: 'setting-item kantata-modal-ai-button-container' });
-            const aiBtn = aiButtonContainer.createEl('button', { text: '✨ AI: Enhance notes', cls: 'kantata-modal-ai-button' });
+            const aiBtn = aiButtonContainer.createEl('button', { text: '✨ AI: enhance notes', cls: 'kantata-modal-ai-button' });
             aiBtn.addEventListener('click', () => {
                 if (!this.notes.trim()) {
                     new Notice('Enter some notes first');
@@ -438,7 +438,7 @@ class ManualTimeEntryModal extends Modal {
                         new Notice(`❌ AI failed: ${e.message}`);
                     } finally {
                         aiBtn.disabled = false;
-                        aiBtn.textContent = '✨ AI: Enhance notes';
+                        aiBtn.textContent = '✨ AI: enhance notes';
                     }
                 })();
             });
@@ -463,7 +463,7 @@ class ManualTimeEntryModal extends Modal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const submitBtn = buttonContainer.createEl('button', { 
-            text: this.isEditMode ? 'Update Time Entry' : 'Create Time Entry', 
+            text: this.isEditMode ? 'Update time entry' : 'Create time entry', 
             cls: 'mod-cta' 
         });
         submitBtn.addEventListener('click', () => {
@@ -513,7 +513,7 @@ class StatusChangeModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         
-        contentEl.createEl('h2', { text: 'Change Project Status' });
+        contentEl.createEl('h2', { text: 'Change project status' });
         contentEl.createEl('p', { text: `Current: ${this.currentStatus}`, cls: 'setting-item-description' });
 
         const listEl = contentEl.createDiv({ cls: 'kantata-status-list kantata-workspace-list' });
@@ -626,7 +626,7 @@ export default class KantataSync extends Plugin {
      */
     private sanitizeFolderName(name: string): string {
         return name
-            .replace(/[\/\\:*?"<>|]/g, '-')  // Replace invalid path chars with dash
+            .replace(/[/\\:*?"<>|]/g, '-')  // Replace invalid path chars with dash
             .replace(/\.+$/g, '')             // Remove trailing dots (Windows issue)
             .replace(/\s+/g, ' ')             // Normalize whitespace
             .trim();
@@ -716,7 +716,7 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'manual-time-entry',
-            name: 'Time Entry (Create/Edit)',
+            name: 'time entry (Create/Edit)',
             callback: async () => {
                 await this.openManualTimeEntryModal();
             }
@@ -733,7 +733,7 @@ export default class KantataSync extends Plugin {
         // Status bar
         this.statusBarItem = this.addStatusBarItem();
         this.statusBarItem.addClass('obsidianlink-status');
-        this.statusBarItem.onClickEvent(async (evt: MouseEvent) => {
+        this.statusBarItem.onClickEvent((evt: MouseEvent) => { void (async () => {
             // Get current file state for context-aware menu
             const file = this.app.workspace.getActiveFile();
             let isSynced = false;
@@ -866,22 +866,26 @@ export default class KantataSync extends Plugin {
             }
             
             menu.showAtMouseEvent(evt);
-        });
+        })(); });
         this.updateStatusBar('Note ⚪ · Time ⚪', 'Click for options');
 
         // File event handlers
-        this.registerEvent(this.app.workspace.on('file-open', async (file) => {
-            await this.updateStatusBarForFile(file);
-            await this.updateRibbonIcons(file);
+        this.registerEvent(this.app.workspace.on('file-open', (file) => {
+            void (async () => {
+                await this.updateStatusBarForFile(file);
+                await this.updateRibbonIcons(file);
+            })();
         }));
 
-        this.registerEvent(this.app.vault.on('modify', async (file) => {
+        this.registerEvent(this.app.vault.on('modify', (file) => {
             const activeFile = this.app.workspace.getActiveFile();
             if (activeFile && file.path === activeFile.path) {
                 if (this.debounceTimeout) clearTimeout(this.debounceTimeout);
-                this.debounceTimeout = setTimeout(async () => {
-                    await this.updateStatusBarForFile(activeFile);
-                    await this.updateRibbonIcons(activeFile);
+                this.debounceTimeout = setTimeout(() => {
+                    void (async () => {
+                        await this.updateStatusBarForFile(activeFile);
+                        await this.updateRibbonIcons(activeFile);
+                    })();
                 }, 1000);
             }
         }));
@@ -891,8 +895,8 @@ export default class KantataSync extends Plugin {
 
         // Auto-sync on startup
         if (this.settings.autoSyncFoldersOnStartup && this.getSecret('kantataToken')) {
-            setTimeout(async () => {
-                await this.autoSyncFolders();
+            setTimeout(() => {
+                void this.autoSyncFolders();
             }, 3000);
         }
 
@@ -917,8 +921,8 @@ export default class KantataSync extends Plugin {
             const intervalMs = this.settings.pollingIntervalMinutes * 60 * 1000;
             console.debug(`[KantataSync] Starting polling every ${this.settings.pollingIntervalMinutes} minutes`);
             
-            this.pollingIntervalId = setInterval(async () => {
-                await this.syncWorkspaces(false);
+            this.pollingIntervalId = setInterval(() => {
+                void this.syncWorkspaces(false);
             }, intervalMs);
         }
     }
@@ -1453,13 +1457,13 @@ export default class KantataSync extends Plugin {
         }
 
         // Note sync icon
-        this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync Note to Kantata', async () => {
+        this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync note to Kantata', async () => {
             await this.syncCurrentNote();
         });
         this.ribbonNoteIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-note');
 
         // Time entry icon
-        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'Time Entry (Create/Edit)', async () => {
+        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'time entry (Create/Edit)', async () => {
             await this.openManualTimeEntryModal();
         });
         this.ribbonTimeIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-time');
@@ -1503,12 +1507,12 @@ export default class KantataSync extends Plugin {
         // Update note icon
         this.ribbonNoteIcon.removeClass('kantata-status-synced', 'kantata-status-pending', 'kantata-status-none');
         this.ribbonNoteIcon.addClass(`kantata-status-${noteStatus}`);
-        this.ribbonNoteIcon.setAttr('aria-label', `Sync Note (${noteStatus === 'synced' ? '✅ Synced' : noteStatus === 'pending' ? '🔄 Pending' : '⚪ Not synced'})`);
+        this.ribbonNoteIcon.setAttr('aria-label', `Sync note (${noteStatus === 'synced' ? '✅ Synced' : noteStatus === 'pending' ? '🔄 Pending' : '⚪ Not synced'})`);
 
         // Update time icon
         this.ribbonTimeIcon.removeClass('kantata-status-logged', 'kantata-status-none');
         this.ribbonTimeIcon.addClass(`kantata-status-${timeStatus === 'logged' ? 'synced' : 'none'}`);
-        this.ribbonTimeIcon.setAttr('aria-label', `Time Entry (${timeStatus === 'logged' ? '✅ Logged' : '⚪ No entry'})`);
+        this.ribbonTimeIcon.setAttr('aria-label', `time entry (${timeStatus === 'logged' ? '✅ Logged' : '⚪ No entry'})`);
     }
 
     async updateStatusBarForFile(file: TFile | null): Promise<void> {
@@ -3081,27 +3085,29 @@ ${teamMembers}
         }
 
         // Confirm deletion using modal
-        new ConfirmModal(this.app, 'Delete this post from Kantata? This cannot be undone.', async () => {
-            try {
-                new Notice('🗑️ Deleting from Kantata...');
-                await this.deletePost(frontmatter.kantata_post_id);
-                
-                // Clear sync frontmatter
-                await this.updateFrontmatter(file, {
-                    kantata_synced: false,
-                    kantata_post_id: null,
-                    kantata_synced_at: null
-                });
-                
-                new Notice('✅ Post deleted from Kantata');
-                
-                // Refresh status bar
-                await this.updateStatusBarForFile(file);
-                await this.updateRibbonIcons(file);
-            } catch (e) {
-                const error = e as Error;
-                new Notice(`❌ Failed to delete: ${error.message}`);
-            }
+        new ConfirmModal(this.app, 'Delete this post from Kantata? This cannot be undone.', () => {
+            void (async () => {
+                try {
+                    new Notice('🗑️ Deleting from Kantata...');
+                    await this.deletePost(frontmatter.kantata_post_id);
+                    
+                    // Clear sync frontmatter
+                    await this.updateFrontmatter(file, {
+                        kantata_synced: false,
+                        kantata_post_id: null,
+                        kantata_synced_at: null
+                    });
+                    
+                    new Notice('✅ Post deleted from Kantata');
+                    
+                    // Refresh status bar
+                    await this.updateStatusBarForFile(file);
+                    await this.updateRibbonIcons(file);
+                } catch (e) {
+                    const error = e as Error;
+                    new Notice(`❌ Failed to delete: ${error.message}`);
+                }
+            })();
         }, 'Delete', 'Cancel').open();
     }
 
@@ -3425,7 +3431,7 @@ ${teamMembers}
 
         // Check if AI time entry is enabled
         if (!this.settings.enableAiTimeEntry) {
-            new Notice('⚠️ AI Time Entry is disabled. Enable it in settings.');
+            new Notice('⚠️ AI time entry is disabled. Enable it in settings.');
             return;
         }
 
@@ -3509,7 +3515,7 @@ ${teamMembers}
 
         // Check if AI time entry is enabled
         if (!this.settings.enableAiTimeEntry) {
-            new Notice('⚠️ AI Time Entry is disabled. Enable it in settings.');
+            new Notice('⚠️ AI time entry is disabled. Enable it in settings.');
             return;
         }
 
@@ -4101,7 +4107,7 @@ class KantataSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'KantataSync Settings' });
+        containerEl.createEl('h2', { text: 'KantataSync settings' });
 
         // API Settings
         new Setting(containerEl)
@@ -4110,7 +4116,7 @@ class KantataSettingTab extends PluginSettingTab {
             .addText(text => {
                 text.setPlaceholder('Enter your token')
                     .setValue(this.plugin.getSecret('kantataToken') || '')
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.setSecret('kantataToken', value);
                     });
                 text.inputEl.type = 'password';
@@ -4121,9 +4127,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Kantata API endpoint (usually leave as default)')
             .addText(text => text
                 .setValue(this.plugin.settings.apiBaseUrl)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.apiBaseUrl = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4146,7 +4152,7 @@ class KantataSettingTab extends PluginSettingTab {
                     })();
                 }));
 
-        // Folder Sync Settings
+        // Folder sync Settings
         new Setting(containerEl).setName('Folder sync').setHeading();
 
         new Setting(containerEl)
@@ -4154,9 +4160,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Automatically create folders for new Kantata projects when Obsidian opens')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoSyncFoldersOnStartup)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.autoSyncFoldersOnStartup = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4164,9 +4170,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Periodically check for new Kantata workspaces and create folders')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enablePolling)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.enablePolling = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     this.plugin.setupPolling();
                 }));
 
@@ -4175,11 +4181,11 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('How often to check for new workspaces (minimum 5 minutes)')
             .addText(text => text
                 .setValue(String(this.plugin.settings.pollingIntervalMinutes))
-                .onChange(async (value) => {
+                .onChange((value) => {
                     const num = parseInt(value, 10);
                     if (!isNaN(num) && num >= 5) {
                         this.plugin.settings.pollingIntervalMinutes = num;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                         this.plugin.setupPolling();
                     }
                 }));
@@ -4192,9 +4198,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Only create folders for workspaces with specific statuses')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.filterByStatus)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.filterByStatus = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4203,12 +4209,12 @@ class KantataSettingTab extends PluginSettingTab {
             .addText(text => text
                 .setPlaceholder('Active, In Progress, Not Started')
                 .setValue(this.plugin.settings.allowedStatuses.join(', '))
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.allowedStatuses = value
                         .split(',')
                         .map(s => s.trim())
                         .filter(s => s.length > 0);
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4222,7 +4228,7 @@ class KantataSettingTab extends PluginSettingTab {
                             const workspaces = await this.plugin.fetchAllWorkspaces();
                             const statuses = [...new Set(workspaces.map(w => w.status || 'No Status'))].sort();
                             this.plugin.settings.allowedStatuses = statuses;
-                            await this.plugin.saveSettings();
+                            void this.plugin.saveSettings();
                             new Notice(`✅ Found ${statuses.length} statuses: ${statuses.join(', ')}`);
                             console.debug('[KantataSync] Populated allowed statuses:', statuses);
                             // Refresh the settings display to show updated value (preserve scroll)
@@ -4245,12 +4251,12 @@ class KantataSettingTab extends PluginSettingTab {
             .addTextArea(text => text
                 .setPlaceholder('Test*\nInternal*\n*Template')
                 .setValue(this.plugin.settings.ignorePatterns.join('\n'))
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.ignorePatterns = value
                         .split('\n')
                         .map(s => s.trim())
                         .filter(s => s.length > 0);
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         // Dashboard & Status
@@ -4261,9 +4267,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Auto-create an index note in each folder with workspace details (team, dates, budget)')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.createDashboardNote)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.createDashboardNote = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4272,9 +4278,9 @@ class KantataSettingTab extends PluginSettingTab {
             .addText(text => text
                 .setPlaceholder('_index.md')
                 .setValue(this.plugin.settings.dashboardNoteName)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.dashboardNoteName = value || '_index.md';
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4282,9 +4288,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Display workspace status (🟢 Active, 🟡 On Hold, etc.) alongside sync status')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showWorkspaceStatusInStatusBar)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.showWorkspaceStatusInStatusBar = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     // Refresh status bar
                     const file = this.plugin.app.workspace.getActiveFile();
                     this.plugin.updateStatusBarForFile(file);
@@ -4295,9 +4301,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Display colored icons in the left ribbon for Note sync and Time entry status')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showRibbonIcons)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.showRibbonIcons = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     this.plugin.setupRibbonIcons();
                 }));
 
@@ -4306,12 +4312,12 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Update all dashboard notes with latest workspace data when polling runs')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.refreshDashboardsOnPoll)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.refreshDashboardsOnPoll = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
-        // Auto-Archive
+        // Auto-archive
         new Setting(containerEl).setName('Auto-archive').setHeading();
 
         new Setting(containerEl)
@@ -4319,9 +4325,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Automatically move folders to archive when workspace status matches')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enableAutoArchive)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.enableAutoArchive = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4330,9 +4336,9 @@ class KantataSettingTab extends PluginSettingTab {
             .addText(text => {
                 text.setPlaceholder('_Archive')
                     .setValue(this.plugin.settings.archiveFolderName)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.archiveFolderName = value || '_Archive';
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     });
                 // Add folder autocomplete
                 new FolderSuggest(this.app, text.inputEl);
@@ -4344,12 +4350,12 @@ class KantataSettingTab extends PluginSettingTab {
             .addText(text => text
                 .setPlaceholder('Closed, Cancelled, Completed, Done')
                 .setValue(this.plugin.settings.archiveStatuses.join(', '))
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.archiveStatuses = value
                         .split(',')
                         .map(s => s.trim())
                         .filter(s => s.length > 0);
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4357,12 +4363,12 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Automatically move folders back out of archive when workspace status changes to a non-archive status')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enableAutoUnarchive)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.enableAutoUnarchive = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
-        // AI Features
+        // AI features
         new Setting(containerEl).setName('AI features').setHeading();
 
         new Setting(containerEl)
@@ -4370,9 +4376,9 @@ class KantataSettingTab extends PluginSettingTab {
             .setDesc('Enable AI-powered note organization and time entry creation')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enableAiTimeEntry)
-                .onChange(async (value) => {
+                .onChange((value) => {
                     this.plugin.settings.enableAiTimeEntry = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
@@ -4386,9 +4392,9 @@ class KantataSettingTab extends PluginSettingTab {
                 .addOption('ollama', 'Ollama (Local - Free)')
                 .addOption('manual', 'Manual (No AI)')
                 .setValue(this.plugin.settings.aiProvider)
-                .onChange(async (value: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual') => {
+                .onChange((value: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual') => {
                     this.plugin.settings.aiProvider = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     // Save scroll position before redraw
                     const scrollParent = this.containerEl.closest('.vertical-tab-content') || this.containerEl;
                     const scrollTop = scrollParent.scrollTop;
@@ -4415,7 +4421,7 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('sk-ant-api03-...')
                     .setValue(this.plugin.getSecret('anthropicApiKey') || '')
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.setSecret('anthropicApiKey', value);
                     })
                     .inputEl.type = 'password');
@@ -4429,9 +4435,9 @@ class KantataSettingTab extends PluginSettingTab {
                     .addOption('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
                     .addOption('claude-3-haiku-20240307', 'Claude 3 Haiku (faster)')
                     .setValue(this.plugin.settings.anthropicModel)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.anthropicModel = value;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
         }
 
@@ -4442,7 +4448,7 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('sk-...')
                     .setValue(this.plugin.getSecret('openaiApiKey') || '')
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.setSecret('openaiApiKey', value);
                     })
                     .inputEl.type = 'password');
@@ -4455,9 +4461,9 @@ class KantataSettingTab extends PluginSettingTab {
                     .addOption('gpt-4-turbo', 'GPT-4 Turbo')
                     .addOption('gpt-3.5-turbo', 'GPT-3.5 Turbo (cheapest)')
                     .setValue(this.plugin.settings.openaiModel)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.openaiModel = value;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
         }
 
@@ -4468,7 +4474,7 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('AIza...')
                     .setValue(this.plugin.getSecret('googleApiKey') || '')
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.setSecret('googleApiKey', value);
                     })
                     .inputEl.type = 'password');
@@ -4482,9 +4488,9 @@ class KantataSettingTab extends PluginSettingTab {
                     .addOption('gemini-1.5-pro', 'Gemini 1.5 Pro')
                     .addOption('gemini-1.5-flash', 'Gemini 1.5 Flash')
                     .setValue(this.plugin.settings.googleModel)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.googleModel = value;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
         }
 
@@ -4495,7 +4501,7 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('sk-or-v1-...')
                     .setValue(this.plugin.getSecret('openrouterApiKey') || '')
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.setSecret('openrouterApiKey', value);
                     })
                     .inputEl.type = 'password');
@@ -4527,9 +4533,9 @@ class KantataSettingTab extends PluginSettingTab {
                     .addOption('deepseek/deepseek-chat-v3-0324', 'DeepSeek V3')
                     .addOption('deepseek/deepseek-r1', 'DeepSeek R1')
                     .setValue(this.plugin.settings.openrouterModel)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.openrouterModel = value;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
         }
 
@@ -4540,9 +4546,9 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('http://localhost:11434')
                     .setValue(this.plugin.settings.ollamaEndpoint)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.ollamaEndpoint = value || 'http://localhost:11434';
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
 
             new Setting(containerEl)
@@ -4551,9 +4557,9 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('llama3.2')
                     .setValue(this.plugin.settings.ollamaModel)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.ollamaModel = value || 'llama3.2';
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
         }
 
@@ -4564,9 +4570,9 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('1.0')
                     .setValue(String(this.plugin.settings.manualDefaultHours))
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.manualDefaultHours = parseFloat(value) || 1.0;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
 
             new Setting(containerEl)
@@ -4575,9 +4581,9 @@ class KantataSettingTab extends PluginSettingTab {
                 .addText(text => text
                     .setPlaceholder('Consulting')
                     .setValue(this.plugin.settings.manualDefaultCategory)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.manualDefaultCategory = value || 'Consulting';
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }));
         }
 
@@ -4612,9 +4618,9 @@ class KantataSettingTab extends PluginSettingTab {
             .addTextArea(text => {
                 text.setPlaceholder('Leave empty for default template...')
                     .setValue(this.plugin.settings.customTemplate)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.customTemplate = value;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     });
                 text.inputEl.rows = 10;
                 text.inputEl.addClass('kantata-settings-token-input');
@@ -4627,9 +4633,9 @@ class KantataSettingTab extends PluginSettingTab {
             .addTextArea(text => {
                 text.setPlaceholder('gray:Not Started,Pending\ngreen:In Progress\nyellow:On Hold\nred:At Risk\nblue:Completed')
                     .setValue(this.plugin.settings.customStatuses)
-                    .onChange(async (value) => {
+                    .onChange((value) => {
                         this.plugin.settings.customStatuses = value;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     });
                 text.inputEl.rows = 6;
                 text.inputEl.addClass('kantata-settings-token-input');
@@ -4646,9 +4652,9 @@ class KantataSettingTab extends PluginSettingTab {
         const menuItems: Record<string, { name: string; desc: string; key: keyof KantataSettings }> = {
             aiOrganize: { name: 'AI: Organize Notes', desc: 'Organize notes with AI template', key: 'menuShowAiOrganize' },
             syncNote: { name: 'Sync/Update Note', desc: 'Sync note to Kantata', key: 'menuShowSyncNote' },
-            aiTimeEntry: { name: 'AI: Time Entry', desc: 'Create/update time entry with AI', key: 'menuShowAiTimeEntry' },
-            manualTimeEntry: { name: 'Manual Time Entry', desc: 'Create/edit time entry manually', key: 'menuShowManualTimeEntry' },
-            changeStatus: { name: 'Change Project Status', desc: 'Change workspace status', key: 'menuShowChangeStatus' },
+            aiTimeEntry: { name: 'AI: time entry', desc: 'Create/update time entry with AI', key: 'menuShowAiTimeEntry' },
+            manualTimeEntry: { name: 'Manual time entry', desc: 'Create/edit time entry manually', key: 'menuShowManualTimeEntry' },
+            changeStatus: { name: 'Change project status', desc: 'Change workspace status', key: 'menuShowChangeStatus' },
             openInKantata: { name: 'Open in Kantata', desc: 'Open workspace in Kantata', key: 'menuShowOpenInKantata' },
             deleteFromKantata: { name: 'Delete from Kantata', desc: 'Delete synced post from Kantata', key: 'menuShowDeleteFromKantata' },
         };
@@ -4695,7 +4701,7 @@ class KantataSettingTab extends PluginSettingTab {
                     deleteBtn.onclick = async (e) => {
                         e.stopPropagation();
                         this.plugin.settings.menuOrder = this.plugin.settings.menuOrder.filter(k => k !== itemKey);
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                         renderMenuItems();
                     };
                 } else {
@@ -4713,7 +4719,7 @@ class KantataSettingTab extends PluginSettingTab {
                         const newValue = !this.plugin.settings[item.key];
                         (this.plugin.settings as any)[item.key] = newValue;
                         toggle.classList.toggle('is-enabled', newValue);
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     };
                 }
 
@@ -4765,7 +4771,7 @@ class KantataSettingTab extends PluginSettingTab {
                     order.splice(newTargetIdx, 0, draggedKey);
 
                     this.plugin.settings.menuOrder = order;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     renderMenuItems();
                 };
 
@@ -4782,8 +4788,8 @@ class KantataSettingTab extends PluginSettingTab {
 
         renderMenuItems();
 
-        // Add Separator button
-        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add Separator', cls: 'kantata-add-separator-btn' });
+        // Add separator button
+        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add separator', cls: 'kantata-add-separator-btn' });
         addSeparatorBtn.onclick = async () => {
             // Generate unique separator ID
             let num = 1;
@@ -4791,7 +4797,7 @@ class KantataSettingTab extends PluginSettingTab {
                 num++;
             }
             this.plugin.settings.menuOrder.push(`separator-${num}`);
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             renderMenuItems();
         };
 
@@ -4802,7 +4808,7 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Clear workspace cache')
             .setDesc('⚠️ USE WITH CAUTION: Removes all cached customer → workspace mappings. You will need to re-link folders.')
             .addButton(button => button
-                .setButtonText('Clear Cache')
+                .setButtonText('Clear cache')
                 .setWarning()
                 .onClick(() => {
                     this.plugin.workspaceCache = {};

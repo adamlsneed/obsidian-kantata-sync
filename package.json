@@ -9,8 +9,13 @@
     "deploy": "npm run build && echo 'Copy main.js and manifest.json to your Obsidian vault plugins/kantata-sync/ folder'"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.3",
     "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
     "esbuild": "^0.20.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-obsidianmd": "github:obsidianmd/eslint-plugin",
     "obsidian": "latest",
     "typescript": "^5.0.0"
   }
