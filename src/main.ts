@@ -1141,7 +1141,7 @@ export default class KantataSync extends Plugin {
                 this.updateStatusBar('📝 Note Sync: ✅ Complete', 'Workspace sync complete');
                 setTimeout(() => {
                     const file = this.app.workspace.getActiveFile();
-                    this.updateStatusBarForFile(file);
+                    void this.updateStatusBarForFile(file);
                 }, 3000);
             } else if (created > 0 || linked > 0) {
                 new Notice(`📁 KantataSync: ${parts.filter(p => !p.includes('already') && !p.includes('filtered')).join(', ')}`);
@@ -1470,7 +1470,7 @@ export default class KantataSync extends Plugin {
 
         // Initial update
         const file = this.app.workspace.getActiveFile();
-        this.updateRibbonIcons(file);
+        void this.updateRibbonIcons(file);
     }
 
     /**
@@ -1577,7 +1577,7 @@ export default class KantataSync extends Plugin {
 
     // ==================== KANTATA COMMANDS ====================
 
-    async openInKantata(): Promise<void> {
+    openInKantata(): void {
         const file = this.app.workspace.getActiveFile();
         if (!file) {
             new Notice('No active file');
@@ -2201,7 +2201,7 @@ JSON:`;
                 hours: Math.max(0.25, roundedHours), // Minimum 15 minutes
                 notes: String(parsed.notes || '')
             };
-        } catch (e) {
+        } catch {
             console.error('[KantataSync] Failed to parse AI response:', responseText);
             throw new Error('Failed to parse AI response as JSON');
         }
@@ -3408,7 +3408,7 @@ ${teamMembers}
                 this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Sync failed');
             }
 
-            setTimeout(() => this.updateStatusBarForFile(file), 3000);
+            setTimeout(() => { void this.updateStatusBarForFile(file); }, 3000);
         } finally {
             this.isSyncing = false;
         }
@@ -3495,7 +3495,7 @@ ${teamMembers}
             this.updateStatusBar('⏱️ Time: ❌', 'Time entry failed');
         }
 
-        setTimeout(() => this.updateStatusBarForFile(file), 3000);
+        setTimeout(() => { void this.updateStatusBarForFile(file); }, 3000);
     }
 
     /**
@@ -3597,7 +3597,7 @@ ${teamMembers}
             this.updateStatusBar('⏱️ Time: ❌', 'Update failed');
         }
 
-        setTimeout(() => this.updateStatusBarForFile(file), 3000);
+        setTimeout(() => { void this.updateStatusBarForFile(file); }, 3000);
     }
 
     /**
@@ -3709,7 +3709,7 @@ ${teamMembers}
                                 kantata_time_synced_at: new Date().toISOString(),
                                 kantata_synced_at: new Date().toISOString()
                             });
-                            setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
+                            setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
                         }
                     } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to create time entry: ${e.message}`);
@@ -3734,8 +3734,8 @@ ${teamMembers}
                                 kantata_time_synced_at: new Date().toISOString(),
                                 kantata_synced_at: new Date().toISOString()
                             });
-                            setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
-                            setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
+                            setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
+                            setTimeout(() => { void this.updateRibbonIcons(activeFile); }, 1000);
                         }
                     } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to update time entry: ${e.message}`);
@@ -3756,8 +3756,8 @@ ${teamMembers}
                                 kantata_time_synced_at: null,
                                 kantata_synced_at: new Date().toISOString() // Preserve note sync status
                             });
-                            setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
-                            setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
+                            setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
+                            setTimeout(() => { void this.updateRibbonIcons(activeFile); }, 1000);
                         }
                     } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to delete time entry: ${e.message}`);
@@ -3826,7 +3826,7 @@ ${teamMembers}
 
         try {
             // Fetch available statuses from Kantata
-            const statuses = await this.getWorkspaceStatuses();
+            const statuses = this.getWorkspaceStatuses();
             
             if (statuses.length === 0) {
                 new Notice('❌ No statuses available');
@@ -3867,7 +3867,7 @@ ${teamMembers}
      * Source: https://knowledge.kantata.com/hc/en-us/articles/115005042433-Project-Status#Project-Status-List
      * Note: Account admins can disable some statuses, but cannot create custom ones
      */
-    async getWorkspaceStatuses(): Promise<StatusOption[]> {
+    getWorkspaceStatuses(): StatusOption[] {
         // Official Kantata project status list (canonical source)
         // Organized by color category
         return [
@@ -4693,7 +4693,7 @@ class KantataSettingTab extends PluginSettingTab {
                 if (isSeparator) {
                     // Separator row
                     const textContainer = row.createDiv({ cls: 'setting-item-info kantata-sortable-text-container' });
-                    const line = textContainer.createEl('hr', { cls: 'kantata-sortable-separator-line' });
+                    textContainer.createEl('hr', { cls: 'kantata-sortable-separator-line' });
                     textContainer.createSpan({ text: 'Separator', cls: 'setting-item-description' });
                     
                     // Delete button for separator
