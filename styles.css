@@ -1,0 +1,307 @@
+/* KantataSync Plugin Styles */
+
+/* =============================================================================
+   Ribbon Icon Status Indicators
+   ============================================================================= */
+.kantata-ribbon-icon {
+    position: relative;
+}
+
+.kantata-ribbon-icon::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--background-primary);
+}
+
+.kantata-status-synced::after {
+    background-color: #4ade80 !important;
+}
+
+.kantata-status-pending::after {
+    background-color: #facc15 !important;
+}
+
+.kantata-status-none::after {
+    background-color: #6b7280 !important;
+}
+
+/* =============================================================================
+   Modal Styles
+   ============================================================================= */
+
+/* Time Entry Modal */
+.kantata-modal-notes-input {
+    width: 100%;
+}
+
+.kantata-modal-ai-button-container {
+    margin-top: 8px;
+}
+
+.kantata-modal-ai-button {
+    width: 100%;
+}
+
+.kantata-modal-button-container {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.kantata-modal-delete-btn {
+    margin-right: auto;
+}
+
+/* Workspace List Modal */
+.kantata-workspace-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.kantata-workspace-btn {
+    padding: 8px 16px;
+    text-align: left;
+}
+
+/* =============================================================================
+   Settings Tab Styles
+   ============================================================================= */
+.kantata-settings-token-input {
+    width: 100%;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* Status Order Sortable */
+.kantata-sortable-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.kantata-sortable-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    cursor: grab;
+}
+
+.kantata-sortable-row.dragging {
+    opacity: 0.5;
+}
+
+.kantata-sortable-row.drag-over-top {
+    border-top: 2px solid var(--interactive-accent);
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.kantata-sortable-row.drag-over-bottom {
+    border-top: none;
+    border-bottom: 2px solid var(--interactive-accent);
+}
+
+.kantata-sortable-handle {
+    margin-right: 12px;
+    color: var(--text-muted);
+    font-size: 16px;
+    user-select: none;
+}
+
+.kantata-sortable-text-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.kantata-sortable-text-container-simple {
+    flex: 1;
+}
+
+.kantata-sortable-separator-line {
+    flex: 1;
+    border: none;
+    border-top: 1px solid var(--text-muted);
+    margin: 0 10px;
+}
+
+.kantata-sortable-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.kantata-sortable-toggle {
+    cursor: pointer;
+}
+
+.kantata-add-separator-btn {
+    margin-top: 8px;
+    margin-bottom: 16px;
+}
+
+/* =============================================================================
+   Dashboard & Info Styles
+   ============================================================================= */
+.kantata-info-section {
+    margin-top: 10px;
+}
+
+.kantata-color-display {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+/* Project Info List */
+.kantata-project-info-list {
+    font-size: 0.9em;
+    color: var(--text-muted);
+}
+
+.kantata-project-info-item {
+    color: var(--text-muted);
+}
+
+.kantata-project-info-warning {
+    color: var(--text-warning, #f59e0b);
+}
+
+.kantata-project-info-danger {
+    color: var(--text-error, #ef4444);
+}
+
+/* Budget & Progress Bars */
+.kantata-progress-bar-container {
+    background-color: var(--background-modifier-border);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.kantata-progress-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.kantata-progress-bar-normal {
+    background-color: var(--interactive-accent);
+}
+
+.kantata-progress-bar-warning {
+    background-color: var(--text-warning, #f59e0b);
+}
+
+.kantata-progress-bar-danger {
+    background-color: var(--text-error, #ef4444);
+}
+
+/* =============================================================================
+   Post/Note Editor Styles
+   ============================================================================= */
+.kantata-post-container {
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+}
+
+.kantata-post-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.kantata-post-meta {
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.kantata-post-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.kantata-post-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* =============================================================================
+   Time Entry Styles
+   ============================================================================= */
+.kantata-time-entry-container {
+    margin-bottom: 12px;
+    padding: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.kantata-time-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.kantata-time-entry-date {
+    font-weight: 500;
+}
+
+.kantata-time-entry-hours {
+    color: var(--text-accent);
+}
+
+.kantata-time-entry-notes {
+    margin-top: 4px;
+    font-size: 0.9em;
+    color: var(--text-muted);
+}
+
+/* =============================================================================
+   Confirmation Modal Styles
+   ============================================================================= */
+.kantata-confirm-modal-content {
+    padding: 20px;
+}
+
+.kantata-confirm-modal-message {
+    margin-bottom: 20px;
+}
+
+.kantata-confirm-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* =============================================================================
+   Fuzzy Suggest Modal Styles
+   ============================================================================= */
+.kantata-suggest-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.kantata-suggest-title {
+    font-weight: 500;
+}
+
+.kantata-suggest-subtitle {
+    font-size: 0.85em;
+    color: var(--text-muted);
+}

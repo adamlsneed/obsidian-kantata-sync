@@ -1,22 +1,4 @@
-import { App, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, TextComponent, requestUrl, AbstractInputSuggest } from 'obsidian';
-
-// =============================================================================
-// API Response Types (merged from main plugin v0.5.0 for better type safety)
-// =============================================================================
-interface KantataApiError {
-    status?: number;
-    message: string;
-    originalError?: unknown;
-}
-
-interface ApiResponse<T> {
-    [key: string]: T;
-}
-
-interface PostResponse {
-    posts?: Record<string, { id: string; updated_at: string; message: string }>;
-    results?: Array<{ id: string }>;
-}
+import { App, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, requestUrl, AbstractInputSuggest } from 'obsidian';
 
 // Folder suggester for autocomplete
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -273,6 +255,46 @@ class WorkspacePickerModal extends FuzzySuggestModal<Workspace> {
     }
 }
 
+// Confirmation Modal (replaces native confirm() for Obsidian compliance)
+class ConfirmModal extends Modal {
+    private message: string;
+    private onConfirm: () => void;
+    private confirmText: string;
+    private cancelText: string;
+
+    constructor(app: App, message: string, onConfirm: () => void, confirmText = 'Confirm', cancelText = 'Cancel') {
+        super(app);
+        this.message = message;
+        this.onConfirm = onConfirm;
+        this.confirmText = confirmText;
+        this.cancelText = cancelText;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('kantata-confirm-modal-content');
+
+        contentEl.createEl('p', { text: this.message, cls: 'kantata-confirm-modal-message' });
+
+        const buttonContainer = contentEl.createDiv({ cls: 'kantata-confirm-modal-buttons' });
+
+        const cancelBtn = buttonContainer.createEl('button', { text: this.cancelText });
+        cancelBtn.addEventListener('click', () => this.close());
+
+        const confirmBtn = buttonContainer.createEl('button', { text: this.confirmText, cls: 'mod-warning' });
+        confirmBtn.addEventListener('click', () => {
+            this.onConfirm();
+            this.close();
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 // Manual Time Entry Modal
 interface TaskOption {
     id: string;
@@ -386,10 +408,9 @@ class ManualTimeEntryModal extends Modal {
         notesInfo.createEl('div', { cls: 'setting-item-name', text: 'Notes' });
         const notesControl = notesSetting.createDiv({ cls: 'setting-item-control' });
         const notesInput = notesControl.createEl('textarea', { 
-            cls: 'kantata-notes-input',
+            cls: 'kantata-notes-input kantata-modal-notes-input',
             attr: { rows: '4', placeholder: 'Describe work completed...' }
         });
-        notesInput.style.width = '100%';
         notesInput.value = this.notes; // Set existing value for edit mode
         notesInput.addEventListener('input', (e) => {
             this.notes = (e.target as HTMLTextAreaElement).value;
@@ -397,47 +418,44 @@ class ManualTimeEntryModal extends Modal {
 
         // AI Enhance button (only if AI is enabled)
         if (this.plugin.settings.enableAiTimeEntry && this.plugin.hasAiCredentials()) {
-            const aiButtonContainer = contentEl.createDiv({ cls: 'setting-item' });
-            aiButtonContainer.style.marginTop = '8px';
-            const aiBtn = aiButtonContainer.createEl('button', { text: '✨ AI: Enhance Notes' });
-            aiBtn.style.width = '100%';
-            aiBtn.addEventListener('click', async () => {
+            const aiButtonContainer = contentEl.createDiv({ cls: 'setting-item kantata-modal-ai-button-container' });
+            const aiBtn = aiButtonContainer.createEl('button', { text: '✨ AI: Enhance notes', cls: 'kantata-modal-ai-button' });
+            aiBtn.addEventListener('click', () => {
                 if (!this.notes.trim()) {
                     new Notice('Enter some notes first');
                     return;
                 }
                 aiBtn.disabled = true;
                 aiBtn.textContent = '✨ Enhancing...';
-                try {
-                    const enhanced = await this.plugin.proofreadForKantata(this.notes);
-                    this.notes = enhanced;
-                    notesInput.value = enhanced;
-                    new Notice('✅ Notes enhanced!');
-                } catch (e: any) {
-                    new Notice(`❌ AI failed: ${e.message}`);
-                } finally {
-                    aiBtn.disabled = false;
-                    aiBtn.textContent = '✨ AI: Enhance Notes';
-                }
+                void (async () => {
+                    try {
+                        const enhanced = await this.plugin.proofreadForKantata(this.notes);
+                        this.notes = enhanced;
+                        notesInput.value = enhanced;
+                        new Notice('✅ Notes enhanced!');
+                    } catch (err) {
+                        const e = err as Error;
+                        new Notice(`❌ AI failed: ${e.message}`);
+                    } finally {
+                        aiBtn.disabled = false;
+                        aiBtn.textContent = '✨ AI: Enhance notes';
+                    }
+                })();
             });
         }
 
         // Submit button
-        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-        buttonContainer.style.marginTop = '20px';
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.gap = '10px';
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container kantata-modal-button-container' });
 
         // Delete button (edit mode only)
         if (this.isEditMode && this.onDelete) {
             const deleteBtn = buttonContainer.createEl('button', { text: 'Delete', cls: 'mod-warning' });
-            deleteBtn.style.marginRight = 'auto'; // Push to left
+            deleteBtn.addClass('kantata-modal-delete-btn');
             deleteBtn.addEventListener('click', () => {
-                if (confirm('Delete this time entry? This cannot be undone.')) {
+                new ConfirmModal(this.app, 'Delete this time entry? This cannot be undone.', () => {
                     this.onDelete!();
                     this.close();
-                }
+                }, 'Delete', 'Cancel').open();
             });
         }
 
@@ -498,19 +516,13 @@ class StatusChangeModal extends Modal {
         contentEl.createEl('h2', { text: 'Change Project Status' });
         contentEl.createEl('p', { text: `Current: ${this.currentStatus}`, cls: 'setting-item-description' });
 
-        const listEl = contentEl.createDiv({ cls: 'kantata-status-list' });
-        listEl.style.display = 'flex';
-        listEl.style.flexDirection = 'column';
-        listEl.style.gap = '8px';
-        listEl.style.marginTop = '16px';
+        const listEl = contentEl.createDiv({ cls: 'kantata-status-list kantata-workspace-list' });
 
         for (const status of this.statuses) {
             const btn = listEl.createEl('button', { 
                 text: `${this.getStatusEmoji(status.color)} ${status.message}`,
-                cls: status.message === this.currentStatus ? 'mod-cta' : ''
+                cls: `kantata-workspace-btn ${status.message === this.currentStatus ? 'mod-cta' : ''}`
             });
-            btn.style.padding = '8px 16px';
-            btn.style.textAlign = 'left';
             btn.addEventListener('click', () => {
                 this.onSelect(status);
                 this.close();
@@ -589,7 +601,7 @@ export default class KantataSync extends Plugin {
                 this.app.secretStorage.setSecret(storageKey, settingsValue);
                 (this.settings as any)[settingsKey] = '';
                 migrated = true;
-                console.log(`[KantataSync] Migrated ${settingsKey} to SecretStorage`);
+                console.debug(`[KantataSync] Migrated ${settingsKey} to SecretStorage`);
             }
         }
         
@@ -625,27 +637,6 @@ export default class KantataSync extends Plugin {
         await this.migrateSecretsToStorage();
         await this.loadWorkspaceCache();
         await this.cleanupStaleCache();  // Remove entries for deleted folders
-
-        // Inject CSS for ribbon icon status colors
-        const styleEl = document.createElement('style');
-        styleEl.id = 'kantata-sync-styles';
-        styleEl.textContent = `
-            .kantata-ribbon-icon { position: relative; }
-            .kantata-ribbon-icon::after {
-                content: '';
-                position: absolute;
-                bottom: 4px;
-                right: 4px;
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                border: 1px solid var(--background-primary);
-            }
-            .kantata-status-synced::after { background-color: #4ade80 !important; }
-            .kantata-status-pending::after { background-color: #facc15 !important; }
-            .kantata-status-none::after { background-color: #6b7280 !important; }
-        `;
-        document.head.appendChild(styleEl);
 
         // Setup ribbon icons if enabled
         this.setupRibbonIcons();
@@ -765,11 +756,11 @@ export default class KantataSync extends Plugin {
                 aiOrganize: () => {
                     if (this.settings.menuShowAiOrganize && this.settings.enableAiTimeEntry) {
                         menu.addItem((item) => {
-                            item.setTitle('✨ AI: Organize Notes')
-                                .onClick(async () => {
+                            item.setTitle('✨ AI: Organize notes')
+                                .onClick(() => {
                                     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                                     if (view?.editor) {
-                                        await this.organizeCurrentNote(view.editor);
+                                        void this.organizeCurrentNote(view.editor);
                                     } else {
                                         new Notice('Open a markdown file first');
                                     }
@@ -784,8 +775,8 @@ export default class KantataSync extends Plugin {
                         menu.addItem((item) => {
                             const title = isSynced ? '📝 Update in Kantata' : '📝 Sync in Kantata';
                             item.setTitle(title)
-                                .onClick(async () => {
-                                    await this.syncCurrentNote();
+                                .onClick(() => {
+                                    void this.syncCurrentNote();
                                 });
                         });
                         return true;
@@ -796,16 +787,16 @@ export default class KantataSync extends Plugin {
                     if (this.settings.menuShowAiTimeEntry && this.settings.enableAiTimeEntry) {
                         if (hasTimeEntry) {
                             menu.addItem((item) => {
-                                item.setTitle('⏱️ AI: Update Time Entry')
-                                    .onClick(async () => {
-                                        await this.updateTimeEntryWithAI();
+                                item.setTitle('⏱️ AI: Update time entry')
+                                    .onClick(() => {
+                                        void this.updateTimeEntryWithAI();
                                     });
                             });
                         } else {
                             menu.addItem((item) => {
-                                item.setTitle('⏱️ AI: Create Time Entry')
-                                    .onClick(async () => {
-                                        await this.createTimeEntryForCurrentNote();
+                                item.setTitle('⏱️ AI: Create time entry')
+                                    .onClick(() => {
+                                        void this.createTimeEntryForCurrentNote();
                                     });
                             });
                         }
@@ -816,10 +807,10 @@ export default class KantataSync extends Plugin {
                 manualTimeEntry: () => {
                     if (this.settings.menuShowManualTimeEntry) {
                         menu.addItem((item) => {
-                            const title = hasTimeEntry ? '⏱️ Edit Time Entry' : '⏱️ Create Time Entry';
+                            const title = hasTimeEntry ? '⏱️ Edit time entry' : '⏱️ Create time entry';
                             item.setTitle(title)
-                                .onClick(async () => {
-                                    await this.openManualTimeEntryModal();
+                                .onClick(() => {
+                                    void this.openManualTimeEntryModal();
                                 });
                         });
                         return true;
@@ -829,9 +820,9 @@ export default class KantataSync extends Plugin {
                 changeStatus: () => {
                     if (this.settings.menuShowChangeStatus) {
                         menu.addItem((item) => {
-                            item.setTitle('🎯 Change Project Status')
-                                .onClick(async () => {
-                                    await this.openStatusChangeModal();
+                            item.setTitle('🎯 Change project status')
+                                .onClick(() => {
+                                    void this.openStatusChangeModal();
                                 });
                         });
                         return true;
@@ -842,8 +833,8 @@ export default class KantataSync extends Plugin {
                     if (this.settings.menuShowOpenInKantata) {
                         menu.addItem((item) => {
                             item.setTitle('🔗 Open in Kantata')
-                                .onClick(async () => {
-                                    await this.openInKantata();
+                                .onClick(() => {
+                                    void this.openInKantata();
                                 });
                         });
                         return true;
@@ -854,8 +845,8 @@ export default class KantataSync extends Plugin {
                     if (this.settings.menuShowDeleteFromKantata && isSynced) {
                         menu.addItem((item) => {
                             item.setTitle('🗑️ Delete from Kantata')
-                                .onClick(async () => {
-                                    await this.deleteFromKantata();
+                                .onClick(() => {
+                                    void this.deleteFromKantata();
                                 });
                         });
                         return true;
@@ -924,7 +915,7 @@ export default class KantataSync extends Plugin {
         
         if (this.settings.enablePolling && this.getSecret('kantataToken')) {
             const intervalMs = this.settings.pollingIntervalMinutes * 60 * 1000;
-            console.log(`[KantataSync] Starting polling every ${this.settings.pollingIntervalMinutes} minutes`);
+            console.debug(`[KantataSync] Starting polling every ${this.settings.pollingIntervalMinutes} minutes`);
             
             this.pollingIntervalId = setInterval(async () => {
                 await this.syncWorkspaces(false);
@@ -936,7 +927,7 @@ export default class KantataSync extends Plugin {
         if (this.pollingIntervalId) {
             clearInterval(this.pollingIntervalId);
             this.pollingIntervalId = null;
-            console.log('[KantataSync] Polling stopped');
+            console.debug('[KantataSync] Polling stopped');
         }
     }
 
@@ -964,7 +955,7 @@ export default class KantataSync extends Plugin {
             
             const regex = new RegExp(`^${regexPattern}$`, 'i');
             if (regex.test(workspaceName)) {
-                console.log(`[KantataSync] Ignoring "${workspaceName}" - matches pattern "${pattern}"`);
+                console.debug(`[KantataSync] Ignoring "${workspaceName}" - matches pattern "${pattern}"`);
                 return true;
             }
         }
@@ -980,7 +971,7 @@ export default class KantataSync extends Plugin {
         // Check status filter
         if (this.settings.filterByStatus) {
             if (!this.settings.allowedStatuses.includes(status)) {
-                console.log(`[KantataSync] Skipping "${workspace.title}" - status "${status}" not in allowed list`);
+                console.debug(`[KantataSync] Skipping "${workspace.title}" - status "${status}" not in allowed list`);
                 return false;
             }
         }
@@ -996,7 +987,7 @@ export default class KantataSync extends Plugin {
     async syncWorkspaces(showNotice = false): Promise<void> {
         if (!this.getSecret('kantataToken')) {
             if (showNotice) new Notice('❌ No Kantata token configured');
-            console.log('[KantataSync] Sync skipped - no token');
+            console.debug('[KantataSync] Sync skipped - no token');
             return;
         }
 
@@ -1004,7 +995,7 @@ export default class KantataSync extends Plugin {
             new Notice('Syncing workspaces from Kantata...');
             this.updateStatusBar('📝 Note Sync: ⏳ Syncing...', 'Fetching workspaces from Kantata');
         }
-        console.log('[KantataSync] Syncing workspaces...');
+        console.debug('[KantataSync] Syncing workspaces...');
         
         try {
             // Clean up stale cache entries first
@@ -1075,7 +1066,7 @@ export default class KantataSync extends Plugin {
                         continue;
                     } else {
                         // Folder was deleted - remove orphan cache entry
-                        console.log(`[KantataSync] Removing orphan cache entry for "${cachedFolderPath}" (folder no longer exists)`);
+                        console.debug(`[KantataSync] Removing orphan cache entry for "${cachedFolderPath}" (folder no longer exists)`);
                         delete this.workspaceCache[cachedFolderPath];
                         linkedWorkspaceIds.delete(workspace.id);
                         // Fall through to create the folder
@@ -1122,8 +1113,8 @@ export default class KantataSync extends Plugin {
                     };
                     linkedWorkspaceIds.set(workspace.id, fullFolderPath);
                     created++;
-                    console.log(`[KantataSync] Created folder: ${fullFolderPath}`);
-                } catch (e) {
+                    console.debug(`[KantataSync] Created folder: ${fullFolderPath}`);
+                } catch {
                     // Folder might already exist with different case
                 }
             }
@@ -1152,11 +1143,11 @@ export default class KantataSync extends Plugin {
                 new Notice(`📁 KantataSync: ${parts.filter(p => !p.includes('already') && !p.includes('filtered')).join(', ')}`);
             }
             
-            console.log(`[KantataSync] Sync complete: ${parts.join(', ')}`);
+            console.debug(`[KantataSync] Sync complete: ${parts.join(', ')}`);
 
             // Refresh dashboards if enabled (with delay to prevent layout thrashing)
             if (this.settings.refreshDashboardsOnPoll && this.settings.createDashboardNote) {
-                console.log('[KantataSync] Refreshing dashboards...');
+                console.debug('[KantataSync] Refreshing dashboards...');
                 let refreshed = 0;
                 const entries = Object.entries(this.workspaceCache);
                 for (let i = 0; i < entries.length; i++) {
@@ -1169,7 +1160,7 @@ export default class KantataSync extends Plugin {
                     }
                 }
                 if (refreshed > 0) {
-                    console.log(`[KantataSync] Refreshed ${refreshed} dashboards`);
+                    console.debug(`[KantataSync] Refreshed ${refreshed} dashboards`);
                 }
             }
 
@@ -1177,7 +1168,7 @@ export default class KantataSync extends Plugin {
             if (this.settings.enableAutoArchive && this.settings.archiveStatuses.length > 0) {
                 await this.checkAndArchiveFolders(showNotice);
             }
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             console.warn('[KantataSync] Sync failed:', e);
             if (showNotice) {
                 new Notice(`❌ Sync failed: ${e.message}`);
@@ -1198,10 +1189,10 @@ export default class KantataSync extends Plugin {
                 statusColor: workspace.status?.color || 'gray',
                 isArchived: workspace.archived === true  // Kantata's archived boolean flag
             };
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             // 404 means workspace was deleted from Kantata
             if (e.status === 404) {
-                console.log(`[KantataSync] Workspace ${workspaceId} was deleted from Kantata (404)`);
+                console.debug(`[KantataSync] Workspace ${workspaceId} was deleted from Kantata (404)`);
                 return { status: 'DELETED', statusColor: 'gray', deleted: true };
             }
             console.warn(`[KantataSync] Could not fetch status for workspace ${workspaceId}:`, e);
@@ -1210,7 +1201,7 @@ export default class KantataSync extends Plugin {
     }
 
     async checkAndArchiveFolders(showNotice: boolean): Promise<void> {
-        console.log('[KantataSync] Checking for folders to archive/unarchive...');
+        console.debug('[KantataSync] Checking for folders to archive/unarchive...');
         
         const archiveFolder = this.settings.archiveFolderName;
         let archived = 0;
@@ -1221,7 +1212,7 @@ export default class KantataSync extends Plugin {
         if (!archiveFolderExists) {
             try {
                 await this.app.vault.createFolder(archiveFolder);
-                console.log(`[KantataSync] Created archive folder: ${archiveFolder}`);
+                console.debug(`[KantataSync] Created archive folder: ${archiveFolder}`);
             } catch (e) {
                 console.warn(`[KantataSync] Could not create archive folder:`, e);
                 return;
@@ -1254,13 +1245,13 @@ export default class KantataSync extends Plugin {
                             this.app.vault.getAbstractFileByPath(folderName)!,
                             newPath
                         );
-                        console.log(`[KantataSync] Archived deleted workspace: ${folderName} → ${newPath}`);
+                        console.debug(`[KantataSync] Archived deleted workspace: ${folderName} → ${newPath}`);
                         archived++;
                     }
                     
                     // Remove linkage from cache
                     delete this.workspaceCache[folderName];
-                    console.log(`[KantataSync] Unlinked deleted workspace: ${cached.workspaceTitle} (${cached.workspaceId})`);
+                    console.debug(`[KantataSync] Unlinked deleted workspace: ${cached.workspaceTitle} (${cached.workspaceId})`);
                 } catch (e) {
                     console.warn(`[KantataSync] Could not handle deleted workspace "${folderName}":`, e);
                 }
@@ -1294,7 +1285,7 @@ export default class KantataSync extends Plugin {
                     
                     archived++;
                     const reason = statusInfo.isArchived ? 'archived in Kantata' : `status: ${statusInfo.status}`;
-                    console.log(`[KantataSync] Archived: ${folderName} → ${newPath} (${reason})`);
+                    console.debug(`[KantataSync] Archived: ${folderName} → ${newPath} (${reason})`);
                 } catch (e) {
                     console.warn(`[KantataSync] Could not archive folder "${folderName}":`, e);
                 }
@@ -1319,7 +1310,7 @@ export default class KantataSync extends Plugin {
                     };
                     
                     unarchived++;
-                    console.log(`[KantataSync] Unarchived: ${folderName} → ${originalName} (status: ${statusInfo.status})`);
+                    console.debug(`[KantataSync] Unarchived: ${folderName} → ${originalName} (status: ${statusInfo.status})`);
                 } catch (e) {
                     console.warn(`[KantataSync] Could not unarchive folder "${folderName}":`, e);
                 }
@@ -1341,9 +1332,9 @@ export default class KantataSync extends Plugin {
             if (showNotice) {
                 new Notice(msg);
             }
-            console.log(`[KantataSync] ${msg}`);
+            console.debug(`[KantataSync] ${msg}`);
         } else {
-            console.log('[KantataSync] No folders to archive/unarchive');
+            console.debug('[KantataSync] No folders to archive/unarchive');
         }
     }
 
@@ -1392,7 +1383,7 @@ export default class KantataSync extends Plugin {
             if (exists) {
                 const data = await this.app.vault.adapter.read('.kantatasync-cache.json');
                 this.workspaceCache = JSON.parse(data);
-                console.log('[KantataSync] Cache loaded:', Object.keys(this.workspaceCache).length, 'entries');
+                console.debug('[KantataSync] Cache loaded:', Object.keys(this.workspaceCache).length, 'entries');
             }
         } catch (e) {
             console.warn('[KantataSync] Failed to load cache:', e);
@@ -1417,10 +1408,10 @@ export default class KantataSync extends Plugin {
         let removed = 0;
         const entries = Object.entries(this.workspaceCache);
         
-        for (const [folderPath, cached] of entries) {
+        for (const [folderPath] of entries) {
             const folderExists = await this.app.vault.adapter.exists(folderPath);
             if (!folderExists) {
-                console.log(`[KantataSync] Removing stale cache entry: "${folderPath}" (folder no longer exists)`);
+                console.debug(`[KantataSync] Removing stale cache entry: "${folderPath}" (folder no longer exists)`);
                 delete this.workspaceCache[folderPath];
                 removed++;
             }
@@ -1428,7 +1419,7 @@ export default class KantataSync extends Plugin {
         
         if (removed > 0) {
             await this.saveWorkspaceCache();
-            console.log(`[KantataSync] Cleaned up ${removed} stale cache entries`);
+            console.debug(`[KantataSync] Cleaned up ${removed} stale cache entries`);
         }
         
         return removed;
@@ -1504,7 +1495,7 @@ export default class KantataSync extends Plugin {
                 }
                 
                 timeStatus = hasTimeEntry ? 'logged' : 'none';
-            } catch (e) {
+            } catch {
                 // Ignore errors
             }
         }
@@ -1575,7 +1566,7 @@ export default class KantataSync extends Plugin {
                 `Note ${noteStatus}${timeStatusText}${projectStatusText}`,
                 `${tooltip}${timeTooltip}`
             );
-        } catch (e) {
+        } catch {
             this.updateStatusBar('Note ⚪ · Time ⚪', 'Ready');
         }
     }
@@ -1658,7 +1649,7 @@ export default class KantataSync extends Plugin {
                 // Update status bar
                 await this.updateStatusBarForFile(file);
             }
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             new Notice(`❌ Failed to fetch workspaces: ${e.message}`);
         }
     }
@@ -1735,7 +1726,7 @@ export default class KantataSync extends Plugin {
                 return { success: true };
             }
             return response.json;
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             const status = e.status || 'unknown';
             let errorMsg = `Kantata API error (${status})`;
             
@@ -1795,13 +1786,13 @@ export default class KantataSync extends Plugin {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
                 return await this.apiRequest(endpoint, method, body);
-            } catch (e: any) {
+            } catch (err) { const e = err as Error;
                 lastError = e;
                 
                 // Only retry on retryable errors (429, 5xx)
                 if (e.retryable && attempt < maxRetries - 1) {
                     const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-                    console.log(`[KantataSync] Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries}): ${e.message}`);
+                    console.debug(`[KantataSync] Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries}): ${e.message}`);
                     await new Promise(r => setTimeout(r, delay));
                     continue;
                 }
@@ -1884,7 +1875,7 @@ export default class KantataSync extends Plugin {
             
             const imageFile = this.app.vault.getAbstractFileByPath(fullPath);
             if (!imageFile) {
-                console.log(`[KantataSync] Image not found: ${fullPath}`);
+                console.debug(`[KantataSync] Image not found: ${fullPath}`);
                 return null;
             }
             
@@ -2124,7 +2115,7 @@ export default class KantataSync extends Plugin {
                     title: s.title || s.name || 'Untitled Task'
                 }));
             
-            console.log(`[KantataSync] Found ${billable.length} billable stories in workspace`);
+            console.debug(`[KantataSync] Found ${billable.length} billable stories in workspace`);
             return billable;
         } catch (e) {
             console.warn('[KantataSync] Could not fetch stories:', e);
@@ -2163,7 +2154,7 @@ export default class KantataSync extends Plugin {
         let content = noteContent;
         if (content.length > this.MAX_AI_CONTENT_LENGTH) {
             content = content.slice(0, this.MAX_AI_CONTENT_LENGTH) + '\n\n[Content truncated for analysis...]';
-            console.log(`[KantataSync] Truncated note content from ${noteContent.length} to ${this.MAX_AI_CONTENT_LENGTH} chars`);
+            console.debug(`[KantataSync] Truncated note content from ${noteContent.length} to ${this.MAX_AI_CONTENT_LENGTH} chars`);
         }
 
         const prompt = `Convert this work note into a time entry. Return JSON only.
@@ -2369,7 +2360,7 @@ OUTPUT:`;
      */
     async deleteTimeEntry(timeEntryId: string): Promise<void> {
         await this.apiRequest(`/time_entries/${timeEntryId}.json`, 'DELETE');
-        console.log(`[KantataSync] Deleted time entry: ${timeEntryId}`);
+        console.debug(`[KantataSync] Deleted time entry: ${timeEntryId}`);
     }
 
     /**
@@ -2394,7 +2385,7 @@ OUTPUT:`;
             timeEntryData.story_id = storyId;
         }
 
-        console.log('[KantataSync] Creating time entry:', { 
+        console.debug('[KantataSync] Creating time entry:', { 
             workspace_id: timeEntryData.workspace_id, 
             time_in_minutes: timeEntryData.time_in_minutes,
             date: timeEntryData.date_performed,
@@ -2407,7 +2398,7 @@ OUTPUT:`;
         
         const entries = Object.values(response.time_entries || {}) as any[];
         if (entries.length > 0) {
-            console.log(`[KantataSync] Created time entry: ${entries[0].id}`);
+            console.debug(`[KantataSync] Created time entry: ${entries[0].id}`);
             return entries[0].id;
         }
         throw new Error('Time entry created but no ID returned');
@@ -2433,7 +2424,7 @@ OUTPUT:`;
         if (partial) return partial.id;
         
         // Fallback to first story
-        console.log(`[KantataSync] No match for "${category}", using first story: ${stories[0].title}`);
+        console.debug(`[KantataSync] No match for "${category}", using first story: ${stories[0].title}`);
         return stories[0].id;
     }
 
@@ -2494,16 +2485,16 @@ OUTPUT:`;
             const storyTitles = stories.map(s => s.title);
             
             // Analyze note with AI
-            console.log('[KantataSync] Analyzing note for time entry...');
-            console.log(`[KantataSync] Available tasks: ${storyTitles.join(', ')}`);
+            console.debug('[KantataSync] Analyzing note for time entry...');
+            console.debug(`[KantataSync] Available tasks: ${storyTitles.join(', ')}`);
             const analysis = await this.analyzeNoteForTimeEntry(noteContent, storyTitles);
-            console.log('[KantataSync] AI analysis:', analysis);
+            console.debug('[KantataSync] AI analysis:', analysis);
             
             // Match AI's category to actual story_id
             const storyId = this.findMatchingStory(analysis.category, stories);
             if (storyId) {
                 const matchedStory = stories.find(s => s.id === storyId);
-                console.log(`[KantataSync] Matched category "${analysis.category}" to story: ${matchedStory?.title} (${storyId})`);
+                console.debug(`[KantataSync] Matched category "${analysis.category}" to story: ${matchedStory?.title} (${storyId})`);
             }
             
             // Get current user ID
@@ -2511,9 +2502,9 @@ OUTPUT:`;
             
             // For Kantata: always clean to plain text (Kantata doesn't render markdown)
             let finalNotes = `${analysis.summary}\n\n${analysis.notes}`;
-            console.log('[KantataSync] Proofreading notes for Kantata...');
+            console.debug('[KantataSync] Proofreading notes for Kantata...');
             finalNotes = await this.proofreadForKantata(finalNotes);
-            console.log('[KantataSync] Proofread result:', finalNotes);
+            console.debug('[KantataSync] Proofread result:', finalNotes);
             
             // Create time entry
             const today = new Date().toISOString().split('T')[0];
@@ -2532,7 +2523,7 @@ OUTPUT:`;
             };
             
             return { success: true, timeEntryId };
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             console.error('[KantataSync] AI time entry failed:', e);
             return { success: false, error: e.message };
         }
@@ -2615,7 +2606,7 @@ OUTPUT:`;
             }
         }
         
-        console.log(`[KantataSync] Fetched ${allWorkspaces.length} workspaces (${page} page(s))`);
+        console.debug(`[KantataSync] Fetched ${allWorkspaces.length} workspaces (${page} page(s))`);
         return allWorkspaces;
     }
 
@@ -2658,10 +2649,10 @@ OUTPUT:`;
                 updatedAt: workspace.updated_at || '',
                 currencySymbol: workspace.currency_symbol || '$'
             };
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             // 404 means workspace was deleted from Kantata
             if (e.status === 404) {
-                console.log(`[KantataSync] Workspace ${workspaceId} was deleted from Kantata (404)`);
+                console.debug(`[KantataSync] Workspace ${workspaceId} was deleted from Kantata (404)`);
                 return {
                     id: workspaceId,
                     title: 'Deleted Workspace',
@@ -2871,7 +2862,7 @@ ${teamMembers}
             const exists = await this.app.vault.adapter.exists(notePath);
             if (!exists) {
                 await this.app.vault.create(notePath, content);
-                console.log(`[KantataSync] Created dashboard: ${notePath}`);
+                console.debug(`[KantataSync] Created dashboard: ${notePath}`);
             }
         } catch (e) {
             console.warn(`[KantataSync] Could not create dashboard note:`, e);
@@ -2882,7 +2873,7 @@ ${teamMembers}
         // Check if folder exists first
         const folderExists = await this.app.vault.adapter.exists(folderName);
         if (!folderExists) {
-            console.log(`[KantataSync] Skipping dashboard update - folder doesn't exist: ${folderName}`);
+            console.debug(`[KantataSync] Skipping dashboard update - folder doesn't exist: ${folderName}`);
             return false;
         }
 
@@ -2894,7 +2885,7 @@ ${teamMembers}
 
         // Skip dashboard update for deleted workspaces (they're handled by archive logic)
         if (details.deleted) {
-            console.log(`[KantataSync] Skipping dashboard update - workspace was deleted: ${folderName}`);
+            console.debug(`[KantataSync] Skipping dashboard update - workspace was deleted: ${folderName}`);
             return false;
         }
 
@@ -2906,12 +2897,12 @@ ${teamMembers}
             const file = this.app.vault.getAbstractFileByPath(notePath);
             if (file instanceof TFile) {
                 await this.app.vault.modify(file, content);
-                console.log(`[KantataSync] Updated dashboard: ${notePath}`);
+                console.debug(`[KantataSync] Updated dashboard: ${notePath}`);
                 return true;
             } else {
                 // Dashboard doesn't exist, create it
                 await this.app.vault.create(notePath, content);
-                console.log(`[KantataSync] Created dashboard: ${notePath}`);
+                console.debug(`[KantataSync] Created dashboard: ${notePath}`);
                 return true;
             }
         } catch (e) {
@@ -3018,7 +3009,7 @@ ${teamMembers}
             }
 
             return null;
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             console.error('Workspace picker error:', e);
             new Notice(`Error selecting workspace: ${e.message}`);
             return null;
@@ -3089,30 +3080,29 @@ ${teamMembers}
             return;
         }
 
-        // Confirm deletion
-        if (!confirm('Delete this post from Kantata? This cannot be undone.')) {
-            return;
-        }
-
-        try {
-            new Notice('🗑️ Deleting from Kantata...');
-            await this.deletePost(frontmatter.kantata_post_id);
-            
-            // Clear sync frontmatter
-            await this.updateFrontmatter(file, {
-                kantata_synced: false,
-                kantata_post_id: null,
-                kantata_synced_at: null
-            });
-            
-            new Notice('✅ Post deleted from Kantata');
-            
-            // Refresh status bar
-            await this.updateStatusBarForFile(file);
-            await this.updateRibbonIcons(file);
-        } catch (e: any) {
-            new Notice(`❌ Failed to delete: ${e.message}`);
-        }
+        // Confirm deletion using modal
+        new ConfirmModal(this.app, 'Delete this post from Kantata? This cannot be undone.', async () => {
+            try {
+                new Notice('🗑️ Deleting from Kantata...');
+                await this.deletePost(frontmatter.kantata_post_id);
+                
+                // Clear sync frontmatter
+                await this.updateFrontmatter(file, {
+                    kantata_synced: false,
+                    kantata_post_id: null,
+                    kantata_synced_at: null
+                });
+                
+                new Notice('✅ Post deleted from Kantata');
+                
+                // Refresh status bar
+                await this.updateStatusBarForFile(file);
+                await this.updateRibbonIcons(file);
+            } catch (e) {
+                const error = e as Error;
+                new Notice(`❌ Failed to delete: ${error.message}`);
+            }
+        }, 'Delete', 'Cancel').open();
     }
 
     parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
@@ -3370,7 +3360,7 @@ ${teamMembers}
             await this.addWorkspaceBanner(file, workspace.id, workspace.title);
 
             return { success: true, postId };
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             console.error('[KantataSync] syncNote ERROR:', e);
             return { success: false, error: e.message };
         }
@@ -3549,7 +3539,6 @@ ${teamMembers}
         // Get workspace ID
         let workspaceId = frontmatter.kantata_workspace_id;
         if (!workspaceId) {
-            const customerName = this.getCustomerName(file) || 'Customer';
             const cacheResult = this.findCacheEntry(file);
             if (cacheResult) {
                 workspaceId = cacheResult.entry.workspaceId;
@@ -3597,7 +3586,7 @@ ${teamMembers}
             
             new Notice(`✅ Time entry updated! (${analysis.hours}h)`);
             this.updateStatusBar('⏱️ Time: ✅', 'Time entry updated');
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             new Notice(`❌ Update failed: ${e.message}`);
             this.updateStatusBar('⏱️ Time: ❌', 'Update failed');
         }
@@ -3621,7 +3610,7 @@ ${teamMembers}
             
             // Clear the stored entry
             this.lastTimeEntry = null;
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             new Notice(`❌ Failed to undo: ${e.message}`);
         }
     }
@@ -3674,8 +3663,8 @@ ${teamMembers}
                             storyId: entry.story_id?.toString() || tasks[0].id
                         };
                     }
-                } catch (e) {
-                    console.log('[KantataSync] Could not load existing time entry, showing create form');
+                } catch {
+                    console.debug('[KantataSync] Could not load existing time entry, showing create form');
                 }
             }
 
@@ -3716,7 +3705,7 @@ ${teamMembers}
                             });
                             setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
                         }
-                    } catch (e: any) {
+                    } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to create time entry: ${e.message}`);
                     }
                 },
@@ -3742,7 +3731,7 @@ ${teamMembers}
                             setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
                             setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
                         }
-                    } catch (e: any) {
+                    } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to update time entry: ${e.message}`);
                     }
                 },
@@ -3764,13 +3753,13 @@ ${teamMembers}
                             setTimeout(() => this.updateStatusBarForFile(activeFile), 1000);
                             setTimeout(() => this.updateRibbonIcons(activeFile), 1000);
                         }
-                    } catch (e: any) {
+                    } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to delete time entry: ${e.message}`);
                     }
                 }
             );
             modal.open();
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             new Notice(`❌ Failed to load tasks: ${e.message}`);
         }
     }
@@ -3805,7 +3794,7 @@ ${teamMembers}
         await this.apiRequest(`/time_entries/${timeEntryId}.json`, 'PUT', {
             time_entry: data
         });
-        console.log(`[KantataSync] Updated time entry: ${timeEntryId}`);
+        console.debug(`[KantataSync] Updated time entry: ${timeEntryId}`);
     }
 
     /**
@@ -3856,13 +3845,13 @@ ${teamMembers}
                         await this.updateStatusBarForFile(file);
                         
                         new Notice(`✅ Status changed to ${status.message}`);
-                    } catch (e: any) {
+                    } catch (err) { const e = err as Error;
                         new Notice(`❌ Failed to change status: ${e.message}`);
                     }
                 }
             );
             modal.open();
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             new Notice(`❌ Failed to load statuses: ${e.message}`);
         }
     }
@@ -3968,14 +3957,14 @@ ${teamMembers}
                 status_key: statusKey
             }
         });
-        console.log(`[KantataSync] Updated workspace ${workspaceId} status_key to: ${statusKey}`);
+        console.debug(`[KantataSync] Updated workspace ${workspaceId} status_key to: ${statusKey}`);
     }
 
     /**
      * Organize current note using AI template
      */
     async organizeCurrentNote(editor: any): Promise<void> {
-        console.log('[KantataSync] organizeCurrentNote called!');
+        console.debug('[KantataSync] organizeCurrentNote called!');
         new Notice('🔍 Starting organize...');
         
         const file = this.app.workspace.getActiveFile();
@@ -3998,7 +3987,7 @@ ${teamMembers}
         const bodyTrimmed = body.trim();
         const isEmpty = !bodyTrimmed || bodyTrimmed.length < 10;
         
-        console.log(`[KantataSync] Body length: ${bodyTrimmed.length}, isEmpty: ${isEmpty}`);
+        console.debug(`[KantataSync] Body length: ${bodyTrimmed.length}, isEmpty: ${isEmpty}`);
 
         // Only check AI credentials if we need AI (not empty)
         if (!isEmpty && !this.hasAiCredentials()) {
@@ -4011,7 +4000,7 @@ ${teamMembers}
             
             if (isEmpty) {
                 // Provide blank template
-                console.log('[KantataSync] Note is empty, creating blank template');
+                console.debug('[KantataSync] Note is empty, creating blank template');
                 new Notice('📝 Creating blank template...');
                 const now = new Date();
                 const roundedMinutes = Math.round(now.getMinutes() / 30) * 30;
@@ -4035,10 +4024,10 @@ ${teamMembers}
                     }
                     // Save original content
                     await this.app.vault.create(backupPath, content);
-                    console.log(`[KantataSync] Backup saved: ${backupPath}`);
+                    console.debug(`[KantataSync] Backup saved: ${backupPath}`);
                 } catch (e) {
                     // Backup already exists or failed - continue anyway
-                    console.log(`[KantataSync] Backup skipped: ${e}`);
+                    console.debug(`[KantataSync] Backup skipped: ${e}`);
                 }
                 
                 // Extract and read images from note
@@ -4046,12 +4035,12 @@ ${teamMembers}
                 const images: Array<{ base64: string; mediaType: string }> = [];
                 
                 if (imagePaths.length > 0) {
-                    console.log(`[KantataSync] Found ${imagePaths.length} images in note`);
+                    console.debug(`[KantataSync] Found ${imagePaths.length} images in note`);
                     for (const imgPath of imagePaths.slice(0, 5)) { // Limit to 5 images
                         const imgData = await this.readImageAsBase64(imgPath, file);
                         if (imgData) {
                             images.push(imgData);
-                            console.log(`[KantataSync] Loaded image: ${imgPath}`);
+                            console.debug(`[KantataSync] Loaded image: ${imgPath}`);
                         }
                     }
                 }
@@ -4061,9 +4050,9 @@ ${teamMembers}
             }
             
             // Replace content (keep frontmatter)
-            console.log('[KantataSync] Setting editor value, organized length:', organized.length);
+            console.debug('[KantataSync] Setting editor value, organized length:', organized.length);
             editor.setValue(frontmatter + organized);
-            console.log('[KantataSync] Editor value set successfully');
+            console.debug('[KantataSync] Editor value set successfully');
             
             // Rename file to Work Session format: YYYY-MM-DD Work Session
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -4092,7 +4081,7 @@ ${teamMembers}
             } else {
                 new Notice('✅ Notes organized!');
             }
-        } catch (e: any) {
+        } catch (err) { const e = err as Error;
             new Notice(`❌ Failed to organize: ${e.message}`);
         }
     }
@@ -4116,7 +4105,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         // API Settings
         new Setting(containerEl)
-            .setName('Kantata API Token')
+            .setName('Kantata API token')
             .setDesc('Your Kantata/Mavenlink OAuth token (stored securely)')
             .addText(text => {
                 text.setPlaceholder('Enter your token')
@@ -4128,7 +4117,7 @@ class KantataSettingTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
-            .setName('API Base URL')
+            .setName('API base URL')
             .setDesc('Kantata API endpoint (usually leave as default)')
             .addText(text => text
                 .setValue(this.plugin.settings.apiBaseUrl)
@@ -4138,24 +4127,27 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Test Kantata Connection')
+            .setName('Test Kantata connection')
             .setDesc('Verify your Kantata token works')
             .addButton(button => button
                 .setButtonText('Test')
-                .onClick(async () => {
-                    try {
-                        const response = await this.plugin.apiRequest('/users/me.json');
-                        const users = Object.values(response.users || {}) as any[];
-                        if (users.length > 0) {
-                            new Notice(`✅ Kantata connected as: ${users[0].full_name}`);
+                .onClick(() => {
+                    void (async () => {
+                        try {
+                            const response = await this.plugin.apiRequest('/users/me.json');
+                            const users = Object.values(response.users || {}) as Array<{full_name: string}>;
+                            if (users.length > 0) {
+                                new Notice(`✅ Kantata connected as: ${users[0].full_name}`);
+                            }
+                        } catch (err) {
+                            const e = err as Error;
+                            new Notice(`❌ Kantata connection failed: ${e.message}`);
                         }
-                    } catch (e: any) {
-                        new Notice(`❌ Kantata connection failed: ${e.message}`);
-                    }
+                    })();
                 }));
 
         // Folder Sync Settings
-        containerEl.createEl('h3', { text: 'Folder Sync' });
+        new Setting(containerEl).setName('Folder sync').setHeading();
 
         new Setting(containerEl)
             .setName('Auto-sync folders on startup')
@@ -4193,7 +4185,7 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         // Filtering
-        containerEl.createEl('h3', { text: 'Workspace Sync Filtering' });
+        new Setting(containerEl).setName('Workspace sync filtering').setHeading();
 
         new Setting(containerEl)
             .setName('Filter by status')
@@ -4220,28 +4212,31 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Fetch & Populate Allowed Statuses')
+            .setName('Fetch and populate allowed statuses')
             .setDesc('Fetch all statuses from Kantata and populate the allowed list (then remove ones you don\'t want)')
             .addButton(button => button
                 .setButtonText('Fetch & Fill')
-                .onClick(async () => {
-                    try {
-                        const workspaces = await this.plugin.fetchAllWorkspaces();
-                        const statuses = [...new Set(workspaces.map(w => w.status || 'No Status'))].sort();
-                        this.plugin.settings.allowedStatuses = statuses;
-                        await this.plugin.saveSettings();
-                        new Notice(`✅ Found ${statuses.length} statuses: ${statuses.join(', ')}`);
-                        console.log('[KantataSync] Populated allowed statuses:', statuses);
-                        // Refresh the settings display to show updated value (preserve scroll)
-                        const scrollParent = this.containerEl.closest('.vertical-tab-content') || this.containerEl;
-                        const scrollTop = scrollParent.scrollTop;
-                        this.display();
-                        requestAnimationFrame(() => {
-                            scrollParent.scrollTop = scrollTop;
-                        });
-                    } catch (e: any) {
-                        new Notice(`❌ Failed to fetch: ${e.message}`);
-                    }
+                .onClick(() => {
+                    void (async () => {
+                        try {
+                            const workspaces = await this.plugin.fetchAllWorkspaces();
+                            const statuses = [...new Set(workspaces.map(w => w.status || 'No Status'))].sort();
+                            this.plugin.settings.allowedStatuses = statuses;
+                            await this.plugin.saveSettings();
+                            new Notice(`✅ Found ${statuses.length} statuses: ${statuses.join(', ')}`);
+                            console.debug('[KantataSync] Populated allowed statuses:', statuses);
+                            // Refresh the settings display to show updated value (preserve scroll)
+                            const scrollParent = this.containerEl.closest('.vertical-tab-content') || this.containerEl;
+                            const scrollTop = scrollParent.scrollTop;
+                            this.display();
+                            requestAnimationFrame(() => {
+                                scrollParent.scrollTop = scrollTop;
+                            });
+                        } catch (err) {
+                            const e = err as Error;
+                            new Notice(`❌ Failed to fetch: ${e.message}`);
+                        }
+                    })();
                 }));
 
         new Setting(containerEl)
@@ -4259,7 +4254,7 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         // Dashboard & Status
-        containerEl.createEl('h3', { text: 'Dashboard & Status' });
+        new Setting(containerEl).setName('Dashboard and status').setHeading();
 
         new Setting(containerEl)
             .setName('Create dashboard note')
@@ -4317,7 +4312,7 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         // Auto-Archive
-        containerEl.createEl('h3', { text: 'Auto-Archive' });
+        new Setting(containerEl).setName('Auto-archive').setHeading();
 
         new Setting(containerEl)
             .setName('Enable auto-archive')
@@ -4368,10 +4363,10 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         // AI Features
-        containerEl.createEl('h3', { text: 'AI Features' });
+        new Setting(containerEl).setName('AI features').setHeading();
 
         new Setting(containerEl)
-            .setName('Enable AI Features')
+            .setName('Enable AI features')
             .setDesc('Enable AI-powered note organization and time entry creation')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enableAiTimeEntry)
@@ -4381,7 +4376,7 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('AI Provider')
+            .setName('AI provider')
             .setDesc('Choose AI provider for time entry analysis')
             .addDropdown(dropdown => dropdown
                 .addOption('anthropic', 'Anthropic (Claude)')
@@ -4408,7 +4403,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'anthropic') {
             new Setting(containerEl)
-                .setName('Anthropic API Key')
+                .setName('Anthropic API key')
                 .setDesc(createFragment(frag => {
                     frag.appendText('Get from ');
                     frag.createEl('a', {
@@ -4426,7 +4421,7 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('Claude Model')
+                .setName('Claude model')
                 .addDropdown(dropdown => dropdown
                     .addOption('claude-opus-4-20250514', 'Claude Opus 4.5')
                     .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4.5')
@@ -4442,7 +4437,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'openai') {
             new Setting(containerEl)
-                .setName('OpenAI API Key')
+                .setName('OpenAI API key')
                 .setDesc('Get from platform.openai.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
@@ -4453,7 +4448,7 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('OpenAI Model')
+                .setName('OpenAI model')
                 .addDropdown(dropdown => dropdown
                     .addOption('gpt-4o', 'GPT-4o (recommended)')
                     .addOption('gpt-4o-mini', 'GPT-4o Mini (faster)')
@@ -4468,7 +4463,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'google') {
             new Setting(containerEl)
-                .setName('Google AI API Key')
+                .setName('Google AI API key')
                 .setDesc('Get from aistudio.google.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('AIza...')
@@ -4479,7 +4474,7 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('Gemini Model')
+                .setName('Gemini model')
                 .addDropdown(dropdown => dropdown
                     .addOption('gemini-2.5-pro-preview-06-05', 'Gemini 3 Pro (latest)')
                     .addOption('gemini-2.0-flash', 'Gemini 2.0 Flash')
@@ -4495,7 +4490,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'openrouter') {
             new Setting(containerEl)
-                .setName('OpenRouter API Key')
+                .setName('OpenRouter API key')
                 .setDesc('Get from openrouter.ai/keys (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-or-v1-...')
@@ -4506,7 +4501,7 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('OpenRouter Model')
+                .setName('OpenRouter model')
                 .setDesc('Access Claude, GPT, Gemini, Llama, and more with one API key')
                 .addDropdown(dropdown => dropdown
                     // Anthropic
@@ -4540,7 +4535,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'ollama') {
             new Setting(containerEl)
-                .setName('Ollama Endpoint')
+                .setName('Ollama endpoint')
                 .setDesc('Local Ollama server URL (no API key needed!)')
                 .addText(text => text
                     .setPlaceholder('http://localhost:11434')
@@ -4551,7 +4546,7 @@ class KantataSettingTab extends PluginSettingTab {
                     }));
 
             new Setting(containerEl)
-                .setName('Ollama Model')
+                .setName('Ollama model')
                 .setDesc('Model name (run "ollama list" to see available)')
                 .addText(text => text
                     .setPlaceholder('llama3.2')
@@ -4564,7 +4559,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'manual') {
             new Setting(containerEl)
-                .setName('Default Hours')
+                .setName('Default hours')
                 .setDesc('Default hours for time entry (no AI analysis)')
                 .addText(text => text
                     .setPlaceholder('1.0')
@@ -4575,7 +4570,7 @@ class KantataSettingTab extends PluginSettingTab {
                     }));
 
             new Setting(containerEl)
-                .setName('Default Category')
+                .setName('Default category')
                 .setDesc('Default category for time entry')
                 .addText(text => text
                     .setPlaceholder('Consulting')
@@ -4589,27 +4584,30 @@ class KantataSettingTab extends PluginSettingTab {
         // Test button (right after provider settings, not for manual mode)
         if (provider !== 'manual') {
             new Setting(containerEl)
-                .setName('Test AI Connection')
+                .setName('Test AI connection')
                 .setDesc(`Verify ${provider} credentials`)
                 .addButton(button => button
                     .setButtonText('Test')
-                    .onClick(async () => {
-                        try {
-                            const response = await this.plugin.callAI('Reply with just: OK');
-                            if (response.toLowerCase().includes('ok')) {
-                                new Notice(`✅ ${provider} connected!`);
-                            } else {
-                                new Notice(`✅ Connected: ${response.slice(0, 50)}`);
+                    .onClick(() => {
+                        void (async () => {
+                            try {
+                                const response = await this.plugin.callAI('Reply with just: OK');
+                                if (response.toLowerCase().includes('ok')) {
+                                    new Notice(`✅ ${provider} connected!`);
+                                } else {
+                                    new Notice(`✅ Connected: ${response.slice(0, 50)}`);
+                                }
+                            } catch (err) {
+                                const e = err as Error;
+                                new Notice(`❌ ${provider} failed: ${e.message}`);
                             }
-                        } catch (e: any) {
-                            new Notice(`❌ ${provider} failed: ${e.message}`);
-                        }
+                        })();
                     }));
         }
 
         // Custom template
         new Setting(containerEl)
-            .setName('Custom Template')
+            .setName('Custom template')
             .setDesc('Custom template for notes. Use {{customer}}, {{date}}, {{time}} as placeholders.')
             .addTextArea(text => {
                 text.setPlaceholder('Leave empty for default template...')
@@ -4619,14 +4617,12 @@ class KantataSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     });
                 text.inputEl.rows = 10;
-                text.inputEl.style.width = '100%';
-                text.inputEl.style.fontFamily = 'monospace';
-                text.inputEl.style.fontSize = '12px';
+                text.inputEl.addClass('kantata-settings-token-input');
             });
 
         // Custom statuses
         new Setting(containerEl)
-            .setName('Project Statuses')
+            .setName('Project statuses')
             .setDesc('Define statuses by color. Format: color:status1,status2,status3 (one color per line)')
             .addTextArea(text => {
                 text.setPlaceholder('gray:Not Started,Pending\ngreen:In Progress\nyellow:On Hold\nred:At Risk\nblue:Completed')
@@ -4636,13 +4632,11 @@ class KantataSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     });
                 text.inputEl.rows = 6;
-                text.inputEl.style.width = '100%';
-                text.inputEl.style.fontFamily = 'monospace';
-                text.inputEl.style.fontSize = '12px';
+                text.inputEl.addClass('kantata-settings-token-input');
             });
 
         // Menu Options
-        containerEl.createEl('h3', { text: 'Status Bar Menu' });
+        new Setting(containerEl).setName('Status bar menu').setHeading();
         containerEl.createEl('p', { 
             text: 'Choose which options appear when you click the status bar. Drag to reorder.',
             cls: 'setting-item-description'
@@ -4668,8 +4662,7 @@ class KantataSettingTab extends PluginSettingTab {
         }
 
         // Create sortable container
-        const sortableContainer = containerEl.createDiv({ cls: 'kantata-menu-sortable' });
-        sortableContainer.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+        const sortableContainer = containerEl.createDiv({ cls: 'kantata-menu-sortable kantata-sortable-container' });
 
         let draggedEl: HTMLElement | null = null;
 
@@ -4683,27 +4676,22 @@ class KantataSettingTab extends PluginSettingTab {
                 // Skip unknown non-separator items
                 if (!isSeparator && !item) continue;
 
-                const row = sortableContainer.createDiv({ cls: 'kantata-menu-row setting-item' });
+                const row = sortableContainer.createDiv({ cls: 'kantata-menu-row setting-item kantata-sortable-row' });
                 row.draggable = true;
                 row.dataset.key = itemKey;
-                row.style.cssText = 'display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--background-modifier-border); cursor: grab;';
 
                 // Drag handle
-                const handle = row.createSpan({ cls: 'kantata-drag-handle' });
-                handle.style.cssText = 'margin-right: 12px; color: var(--text-muted); font-size: 16px; user-select: none;';
+                const handle = row.createSpan({ cls: 'kantata-drag-handle kantata-sortable-handle' });
                 handle.textContent = '⋮⋮';
 
                 if (isSeparator) {
                     // Separator row
-                    const textContainer = row.createDiv({ cls: 'setting-item-info' });
-                    textContainer.style.cssText = 'flex: 1; display: flex; align-items: center;';
-                    const line = textContainer.createEl('hr');
-                    line.style.cssText = 'flex: 1; border: none; border-top: 1px solid var(--text-muted); margin: 0 10px;';
+                    const textContainer = row.createDiv({ cls: 'setting-item-info kantata-sortable-text-container' });
+                    const line = textContainer.createEl('hr', { cls: 'kantata-sortable-separator-line' });
                     textContainer.createSpan({ text: 'Separator', cls: 'setting-item-description' });
                     
                     // Delete button for separator
-                    const deleteBtn = row.createEl('button', { text: '✕' });
-                    deleteBtn.style.cssText = 'background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px;';
+                    const deleteBtn = row.createEl('button', { text: '✕', cls: 'kantata-sortable-delete-btn' });
                     deleteBtn.onclick = async (e) => {
                         e.stopPropagation();
                         this.plugin.settings.menuOrder = this.plugin.settings.menuOrder.filter(k => k !== itemKey);
@@ -4712,16 +4700,14 @@ class KantataSettingTab extends PluginSettingTab {
                     };
                 } else {
                     // Regular menu item
-                    const textContainer = row.createDiv({ cls: 'setting-item-info' });
-                    textContainer.style.cssText = 'flex: 1;';
+                    const textContainer = row.createDiv({ cls: 'setting-item-info kantata-sortable-text-container-simple' });
                     textContainer.createDiv({ cls: 'setting-item-name', text: item.name });
                     textContainer.createDiv({ cls: 'setting-item-description', text: item.desc });
 
                     // Toggle
                     const toggleContainer = row.createDiv({ cls: 'setting-item-control' });
-                    const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container' });
+                    const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container kantata-sortable-toggle' });
                     toggle.classList.toggle('is-enabled', this.plugin.settings[item.key] as boolean);
-                    toggle.style.cssText = 'cursor: pointer;';
                     toggle.onclick = async (e) => {
                         e.stopPropagation();
                         const newValue = !this.plugin.settings[item.key];
@@ -4734,12 +4720,12 @@ class KantataSettingTab extends PluginSettingTab {
                 // Drag events
                 row.ondragstart = (e) => {
                     draggedEl = row;
-                    row.style.opacity = '0.5';
+                    row.addClass('dragging');
                     e.dataTransfer?.setData('text/plain', itemKey);
                 };
 
                 row.ondragend = () => {
-                    row.style.opacity = '1';
+                    row.removeClass('dragging');
                     draggedEl = null;
                 };
 
@@ -4748,14 +4734,14 @@ class KantataSettingTab extends PluginSettingTab {
                 };
 
                 row.ondragleave = () => {
-                    row.style.borderTop = '';
-                    row.style.borderBottom = '';
+                    row.removeClass('drag-over-top');
+                    row.removeClass('drag-over-bottom');
                 };
 
                 row.ondrop = async (e) => {
                     e.preventDefault();
-                    row.style.borderTop = '';
-                    row.style.borderBottom = '';
+                    row.removeClass('drag-over-top');
+                    row.removeClass('drag-over-bottom');
                     if (!draggedEl || draggedEl === row) return;
 
                     const draggedKey = draggedEl.dataset.key!;
@@ -4788,8 +4774,8 @@ class KantataSettingTab extends PluginSettingTab {
                     if (!draggedEl || draggedEl === row) return;
                     const rect = row.getBoundingClientRect();
                     const onBottom = e.clientY > rect.top + rect.height / 2;
-                    row.style.borderTop = onBottom ? '' : '2px solid var(--interactive-accent)';
-                    row.style.borderBottom = onBottom ? '2px solid var(--interactive-accent)' : '';
+                    row.toggleClass('drag-over-top', !onBottom);
+                    row.toggleClass('drag-over-bottom', onBottom);
                 });
             }
         };
@@ -4797,8 +4783,7 @@ class KantataSettingTab extends PluginSettingTab {
         renderMenuItems();
 
         // Add Separator button
-        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add Separator' });
-        addSeparatorBtn.style.cssText = 'margin-top: 8px; margin-bottom: 16px;';
+        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add Separator', cls: 'kantata-add-separator-btn' });
         addSeparatorBtn.onclick = async () => {
             // Generate unique separator ID
             let num = 1;
@@ -4811,17 +4796,17 @@ class KantataSettingTab extends PluginSettingTab {
         };
 
         // Cache Management
-        containerEl.createEl('h3', { text: 'Cache Management' });
+        new Setting(containerEl).setName('Cache management').setHeading();
 
         new Setting(containerEl)
-            .setName('Clear Workspace Cache')
+            .setName('Clear workspace cache')
             .setDesc('⚠️ USE WITH CAUTION: Removes all cached customer → workspace mappings. You will need to re-link folders.')
             .addButton(button => button
                 .setButtonText('Clear Cache')
                 .setWarning()
-                .onClick(async () => {
+                .onClick(() => {
                     this.plugin.workspaceCache = {};
-                    await this.plugin.saveWorkspaceCache();
+                    void this.plugin.saveWorkspaceCache();
                     new Notice('Workspace cache cleared');
                 }));
 
