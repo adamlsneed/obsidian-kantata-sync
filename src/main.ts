@@ -348,7 +348,10 @@ class ManualTimeEntryModal extends Modal {
         contentEl.empty();
         contentEl.addClass('kantata-time-entry-modal');
 
-        contentEl.createEl('h2', { text: this.isEditMode ? 'Edit time entry' : 'Create time entry' });
+        contentEl.createDiv().createEl('div', { 
+            text: this.isEditMode ? 'Edit time entry' : 'Create time entry',
+            cls: 'modal-title'
+        });
 
         // Task selection
         const taskSetting = contentEl.createDiv({ cls: 'setting-item' });
@@ -513,7 +516,10 @@ class StatusChangeModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         
-        contentEl.createEl('h2', { text: 'Change project status' });
+        contentEl.createDiv().createEl('div', { 
+            text: 'Change project status',
+            cls: 'modal-title'
+        });
         contentEl.createEl('p', { text: `Current: ${this.currentStatus}`, cls: 'setting-item-description' });
 
         const listEl = contentEl.createDiv({ cls: 'kantata-status-list kantata-workspace-list' });
@@ -716,7 +722,7 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'manual-time-entry',
-            name: 'time entry (Create/Edit)',
+            name: 'Time entry (create/edit)',
             callback: () => {
                 void this.openManualTimeEntryModal();
             }
@@ -1463,7 +1469,7 @@ export default class KantataSync extends Plugin {
         this.ribbonNoteIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-note');
 
         // Time entry icon
-        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'time entry (Create/Edit)', async () => {
+        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'Time entry (create/edit)', async () => {
             await this.openManualTimeEntryModal();
         });
         this.ribbonTimeIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-time');
@@ -1512,7 +1518,7 @@ export default class KantataSync extends Plugin {
         // Update time icon
         this.ribbonTimeIcon.removeClass('kantata-status-logged', 'kantata-status-none');
         this.ribbonTimeIcon.addClass(`kantata-status-${timeStatus === 'logged' ? 'synced' : 'none'}`);
-        this.ribbonTimeIcon.setAttr('aria-label', `time entry (${timeStatus === 'logged' ? '✅ Logged' : '⚪ No entry'})`);
+        this.ribbonTimeIcon.setAttr('aria-label', `Time entry (${timeStatus === 'logged' ? '✅ Logged' : '⚪ No entry'})`);
     }
 
     async updateStatusBarForFile(file: TFile | null): Promise<void> {
@@ -4107,7 +4113,7 @@ class KantataSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'KantataSync settings' });
+        new Setting(containerEl).setName('KantataSync settings').setHeading();
 
         // API Settings
         new Setting(containerEl)
@@ -4298,7 +4304,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Show ribbon icons')
-            .setDesc('Display colored icons in the left ribbon for Note sync and Time entry status')
+            .setDesc('Display colored icons in the left ribbon for note sync and time entry status')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showRibbonIcons)
                 .onChange((value) => {
@@ -4650,9 +4656,9 @@ class KantataSettingTab extends PluginSettingTab {
 
         // Menu item definitions
         const menuItems: Record<string, { name: string; desc: string; key: keyof KantataSettings }> = {
-            aiOrganize: { name: 'AI: Organize Notes', desc: 'Organize notes with AI template', key: 'menuShowAiOrganize' },
-            syncNote: { name: 'Sync/Update Note', desc: 'Sync note to Kantata', key: 'menuShowSyncNote' },
-            aiTimeEntry: { name: 'AI: time entry', desc: 'Create/update time entry with AI', key: 'menuShowAiTimeEntry' },
+            aiOrganize: { name: 'AI: Organize notes', desc: 'Organize notes with AI template', key: 'menuShowAiOrganize' },
+            syncNote: { name: 'Sync/update note', desc: 'Sync note to Kantata', key: 'menuShowSyncNote' },
+            aiTimeEntry: { name: 'AI: Time entry', desc: 'Create/update time entry with AI', key: 'menuShowAiTimeEntry' },
             manualTimeEntry: { name: 'Manual time entry', desc: 'Create/edit time entry manually', key: 'menuShowManualTimeEntry' },
             changeStatus: { name: 'Change project status', desc: 'Change workspace status', key: 'menuShowChangeStatus' },
             openInKantata: { name: 'Open in Kantata', desc: 'Open workspace in Kantata', key: 'menuShowOpenInKantata' },
