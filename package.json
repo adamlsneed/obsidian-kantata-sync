@@ -1,6 +1,6 @@
 {
   "name": "obsidian-kantata-sync",
-  "version": "26.02.05",
+  "version": "26.02.06",
   "description": "Sync Obsidian notes to Kantata Activity Feeds",
   "main": "main.js",
   "scripts": {
