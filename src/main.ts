@@ -4113,7 +4113,7 @@ class KantataSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        new Setting(containerEl).setName('KantataSync settings').setHeading();
+        new Setting(containerEl).setName('Settings').setHeading();
 
         // API Settings
         new Setting(containerEl)
@@ -4704,7 +4704,7 @@ class KantataSettingTab extends PluginSettingTab {
                     
                     // Delete button for separator
                     const deleteBtn = row.createEl('button', { text: '✕', cls: 'kantata-sortable-delete-btn' });
-                    deleteBtn.onclick = async (e) => {
+                    deleteBtn.onclick = (e) => {
                         e.stopPropagation();
                         this.plugin.settings.menuOrder = this.plugin.settings.menuOrder.filter(k => k !== itemKey);
                         void this.plugin.saveSettings();
@@ -4720,7 +4720,7 @@ class KantataSettingTab extends PluginSettingTab {
                     const toggleContainer = row.createDiv({ cls: 'setting-item-control' });
                     const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container kantata-sortable-toggle' });
                     toggle.classList.toggle('is-enabled', this.plugin.settings[item.key] as boolean);
-                    toggle.onclick = async (e) => {
+                    toggle.onclick = (e) => {
                         e.stopPropagation();
                         const newValue = !this.plugin.settings[item.key];
                         (this.plugin.settings as any)[item.key] = newValue;
@@ -4750,7 +4750,7 @@ class KantataSettingTab extends PluginSettingTab {
                     row.removeClass('drag-over-bottom');
                 };
 
-                row.ondrop = async (e) => {
+                row.ondrop = (e) => {
                     e.preventDefault();
                     row.removeClass('drag-over-top');
                     row.removeClass('drag-over-bottom');
@@ -4796,7 +4796,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         // Add separator button
         const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add separator', cls: 'kantata-add-separator-btn' });
-        addSeparatorBtn.onclick = async () => {
+        addSeparatorBtn.onclick = () => {
             // Generate unique separator ID
             let num = 1;
             while (this.plugin.settings.menuOrder.includes(`separator-${num}`)) {
