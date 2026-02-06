@@ -555,9 +555,9 @@ class StatusChangeModal extends Modal {
 }
 
 export default class KantataSync extends Plugin {
-    settings!: KantataSettings;
+    settings: KantataSettings;
     workspaceCache: Record<string, WorkspaceCacheEntry> = {};
-    statusBarItem!: HTMLElement;
+    statusBarItem: HTMLElement;
     private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
     private ribbonNoteIcon: HTMLElement | null = null;
     private ribbonTimeIcon: HTMLElement | null = null;
@@ -873,7 +873,7 @@ export default class KantataSync extends Plugin {
             
             menu.showAtMouseEvent(evt);
         })(); });
-        this.updateStatusBar('Note ⚪ · Time ⚪', 'Click for options');
+        void this.updateStatusBar('Note ⚪ · Time ⚪', 'Click for options');
 
         // File event handlers
         this.registerEvent(this.app.workspace.on('file-open', (file) => {
@@ -1003,7 +1003,7 @@ export default class KantataSync extends Plugin {
 
         if (showNotice) {
             new Notice('Syncing workspaces from Kantata...');
-            this.updateStatusBar('📝 Note Sync: ⏳ Syncing...', 'Fetching workspaces from Kantata');
+            void this.updateStatusBar('📝 Note Sync: ⏳ Syncing...', 'Fetching workspaces from Kantata');
         }
         console.debug('[KantataSync] Syncing workspaces...');
         
@@ -1144,7 +1144,7 @@ export default class KantataSync extends Plugin {
                 } else {
                     new Notice('✅ Sync complete: No changes');
                 }
-                this.updateStatusBar('📝 Note Sync: ✅ Complete', 'Workspace sync complete');
+                void this.updateStatusBar('📝 Note Sync: ✅ Complete', 'Workspace sync complete');
                 setTimeout(() => {
                     const file = this.app.workspace.getActiveFile();
                     void this.updateStatusBarForFile(file);
@@ -1182,7 +1182,7 @@ export default class KantataSync extends Plugin {
             console.warn('[KantataSync] Sync failed:', e);
             if (showNotice) {
                 new Notice(`❌ Sync failed: ${e.message}`);
-                this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Workspace sync failed');
+                void this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Workspace sync failed');
             }
         }
     }
@@ -1523,12 +1523,12 @@ export default class KantataSync extends Plugin {
 
     async updateStatusBarForFile(file: TFile | null): Promise<void> {
         if (!file || file.extension !== 'md') {
-            this.updateStatusBar('📝 Note Sync: ⚪', 'No note open');
+            void this.updateStatusBar('📝 Note Sync: ⚪', 'No note open');
             return;
         }
 
         if (file.path.includes('aaaTemplates')) {
-            this.updateStatusBar('📝 Note Sync: ⚪', 'Template file');
+            void this.updateStatusBar('📝 Note Sync: ⚪', 'Template file');
             return;
         }
 
@@ -1577,7 +1577,7 @@ export default class KantataSync extends Plugin {
                 `${tooltip}${timeTooltip}`
             );
         } catch {
-            this.updateStatusBar('Note ⚪ · Time ⚪', 'Ready');
+            void this.updateStatusBar('Note ⚪ · Time ⚪', 'Ready');
         }
     }
 
@@ -1716,7 +1716,7 @@ export default class KantataSync extends Plugin {
             throw new Error('Kantata token not configured. Go to Settings → KantataSync');
         }
 
-        const options: any = {
+        const options = {
             url: `${this.settings.apiBaseUrl}${endpoint}`,
             method,
             headers: {
@@ -1914,7 +1914,7 @@ export default class KantataSync extends Plugin {
         };
 
         // Build message content - text and optional images
-        const content: any[] = [];
+        const content: Array<any> = [];
         
         // Add images first if provided
         if (images && images.length > 0) {
@@ -2382,7 +2382,7 @@ OUTPUT:`;
         storyId: string | null,
         data: { date: string; hours: number; notes: string }
     ): Promise<string> {
-        const timeEntryData: any = {
+        const timeEntryData = {
             workspace_id: workspaceId,
             user_id: userId,
             date_performed: data.date,
@@ -3143,7 +3143,7 @@ ${teamMembers}
         for (const line of fmContent.split('\n')) {
             const match = line.match(/^(\w+):\s*(.*)$/);
             if (match) {
-                let value: any = match[2].trim();
+                let value = match[2].trim();
                 if (value === 'true') value = true;
                 else if (value === 'false') value = false;
                 else if (value.startsWith("'") && value.endsWith("'")) {
@@ -3397,7 +3397,7 @@ ${teamMembers}
         }
 
         this.isSyncing = true;
-        this.updateStatusBar('📝 Note Sync: ⏳', 'Syncing to Kantata...');
+        void this.updateStatusBar('📝 Note Sync: ⏳', 'Syncing to Kantata...');
         new Notice('Syncing to Kantata...');
 
         try {
@@ -3405,13 +3405,13 @@ ${teamMembers}
 
             if (result.success && result.updated) {
                 new Notice(`🔄 Updated in Kantata! Post ID: ${result.postId}`);
-                this.updateStatusBar('📝 Note Sync: ✅ Updated', 'Note synced to Kantata');
+                void this.updateStatusBar('📝 Note Sync: ✅ Updated', 'Note synced to Kantata');
             } else if (result.success && result.postId) {
                 new Notice(`✅ Synced to Kantata! Post ID: ${result.postId}`);
-                this.updateStatusBar('📝 Note Sync: ✅ Synced', 'Note synced to Kantata');
+                void this.updateStatusBar('📝 Note Sync: ✅ Synced', 'Note synced to Kantata');
             } else {
                 new Notice(`❌ Sync failed: ${result.error}`);
-                this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Sync failed');
+                void this.updateStatusBar('📝 Note Sync: ❌ Failed', 'Sync failed');
             }
 
             setTimeout(() => { void this.updateStatusBarForFile(file); }, 3000);
@@ -3482,7 +3482,7 @@ ${teamMembers}
         }
 
         // Create time entry
-        this.updateStatusBar('⏱️ Time: ⏳', 'Creating time entry...');
+        void this.updateStatusBar('⏱️ Time: ⏳', 'Creating time entry...');
         new Notice('🤖 Analyzing note and creating time entry...');
 
         const result = await this.processAiTimeEntry(workspaceId, cleanBody, customerName);
@@ -3495,10 +3495,10 @@ ${teamMembers}
                 kantata_synced_at: new Date().toISOString()
             });
             new Notice(`✅ Time entry created! ID: ${result.timeEntryId}`);
-            this.updateStatusBar('⏱️ Time: ✅', 'Time entry created');
+            void this.updateStatusBar('⏱️ Time: ✅', 'Time entry created');
         } else {
             new Notice(`❌ Time entry failed: ${result.error}`);
-            this.updateStatusBar('⏱️ Time: ❌', 'Time entry failed');
+            void this.updateStatusBar('⏱️ Time: ❌', 'Time entry failed');
         }
 
         setTimeout(() => { void this.updateStatusBarForFile(file); }, 3000);
@@ -3561,7 +3561,7 @@ ${teamMembers}
         }
 
         // Analyze note with AI
-        this.updateStatusBar('⏱️ Time: ⏳', 'Updating time entry...');
+        void this.updateStatusBar('⏱️ Time: ⏳', 'Updating time entry...');
         new Notice('🤖 Analyzing note and updating time entry...');
 
         try {
@@ -3597,10 +3597,10 @@ ${teamMembers}
             });
             
             new Notice(`✅ Time entry updated! (${analysis.hours}h)`);
-            this.updateStatusBar('⏱️ Time: ✅', 'Time entry updated');
+            void this.updateStatusBar('⏱️ Time: ✅', 'Time entry updated');
         } catch (err) { const e = err as Error;
             new Notice(`❌ Update failed: ${e.message}`);
-            this.updateStatusBar('⏱️ Time: ❌', 'Update failed');
+            void this.updateStatusBar('⏱️ Time: ❌', 'Update failed');
         }
 
         setTimeout(() => { void this.updateStatusBarForFile(file); }, 3000);
@@ -3686,88 +3686,94 @@ ${teamMembers}
                 this,
                 workspaceId,
                 tasks,
-                async (taskId, hours, notes) => {
-                    try {
-                        new Notice('⏱️ Creating time entry...');
-                        const userId = await this.getCurrentUserId();
-                        const today = new Date().toISOString().split('T')[0];
-                        
-                        const timeEntryId = await this.createTimeEntry(workspaceId, userId, taskId, {
-                            date: today,
-                            hours: hours,
-                            notes: notes
-                        });
-
-                        // Store for undo
-                        this.lastTimeEntry = {
-                            id: timeEntryId,
-                            workspaceId: workspaceId,
-                            data: { taskId, hours, notes }
-                        };
-
-                        new Notice(`✅ Time entry created! ${hours} hours logged`);
-
-                        // Update frontmatter if we have an active file
-                        const activeFile = this.app.workspace.getActiveFile();
-                        if (activeFile) {
-                            await this.updateFrontmatter(activeFile, {
-                                kantata_time_entry_id: timeEntryId,
-                                kantata_time_synced_at: new Date().toISOString(),
-                                kantata_synced_at: new Date().toISOString()
+                (taskId, hours, notes) => {
+                    void (async () => {
+                        try {
+                            new Notice('⏱️ Creating time entry...');
+                            const userId = await this.getCurrentUserId();
+                            const today = new Date().toISOString().split('T')[0];
+                            
+                            const timeEntryId = await this.createTimeEntry(workspaceId, userId, taskId, {
+                                date: today,
+                                hours: hours,
+                                notes: notes
                             });
-                            setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
+
+                            // Store for undo
+                            this.lastTimeEntry = {
+                                id: timeEntryId,
+                                workspaceId: workspaceId,
+                                data: { taskId, hours, notes }
+                            };
+
+                            new Notice(`✅ Time entry created! ${hours} hours logged`);
+
+                            // Update frontmatter if we have an active file
+                            const activeFile = this.app.workspace.getActiveFile();
+                            if (activeFile) {
+                                await this.updateFrontmatter(activeFile, {
+                                    kantata_time_entry_id: timeEntryId,
+                                    kantata_time_synced_at: new Date().toISOString(),
+                                    kantata_synced_at: new Date().toISOString()
+                                });
+                                setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
+                            }
+                        } catch (err) { const e = err as Error;
+                            new Notice(`❌ Failed to create time entry: ${e.message}`);
                         }
-                    } catch (err) { const e = err as Error;
-                        new Notice(`❌ Failed to create time entry: ${e.message}`);
-                    }
+                    })();
                 },
                 existingEntry,
-                async (taskId, hours, notes) => {
+                (taskId, hours, notes) => {
                     // Update callback for edit mode
-                    try {
-                        new Notice('⏱️ Updating time entry...');
-                        await this.updateTimeEntry(existingEntryId!, { 
-                            time_in_minutes: Math.round(hours * 60),
-                            notes: notes,
-                            story_id: taskId
-                        });
-                        new Notice(`✅ Time entry updated! ${hours} hours`);
-                        
-                        // Update frontmatter timestamp
-                        const activeFile = this.app.workspace.getActiveFile();
-                        if (activeFile) {
-                            await this.updateFrontmatter(activeFile, {
-                                kantata_time_synced_at: new Date().toISOString(),
-                                kantata_synced_at: new Date().toISOString()
+                    void (async () => {
+                        try {
+                            new Notice('⏱️ Updating time entry...');
+                            await this.updateTimeEntry(existingEntryId!, { 
+                                time_in_minutes: Math.round(hours * 60),
+                                notes: notes,
+                                story_id: taskId
                             });
-                            setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
-                            setTimeout(() => { void this.updateRibbonIcons(activeFile); }, 1000);
+                            new Notice(`✅ Time entry updated! ${hours} hours`);
+                            
+                            // Update frontmatter timestamp
+                            const activeFile = this.app.workspace.getActiveFile();
+                            if (activeFile) {
+                                await this.updateFrontmatter(activeFile, {
+                                    kantata_time_synced_at: new Date().toISOString(),
+                                    kantata_synced_at: new Date().toISOString()
+                                });
+                                setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
+                                setTimeout(() => { void this.updateRibbonIcons(activeFile); }, 1000);
+                            }
+                        } catch (err) { const e = err as Error;
+                            new Notice(`❌ Failed to update time entry: ${e.message}`);
                         }
-                    } catch (err) { const e = err as Error;
-                        new Notice(`❌ Failed to update time entry: ${e.message}`);
-                    }
+                    })();
                 },
-                async () => {
+                () => {
                     // Delete callback for edit mode
-                    try {
-                        new Notice('🗑️ Deleting time entry...');
-                        await this.deleteTimeEntry(existingEntryId!);
-                        new Notice('✅ Time entry deleted');
-                        
-                        // Clear time entry frontmatter (keep note sync status)
-                        const activeFile = this.app.workspace.getActiveFile();
-                        if (activeFile) {
-                            await this.updateFrontmatter(activeFile, {
-                                kantata_time_entry_id: null,
-                                kantata_time_synced_at: null,
-                                kantata_synced_at: new Date().toISOString() // Preserve note sync status
-                            });
-                            setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
-                            setTimeout(() => { void this.updateRibbonIcons(activeFile); }, 1000);
+                    void (async () => {
+                        try {
+                            new Notice('🗑️ Deleting time entry...');
+                            await this.deleteTimeEntry(existingEntryId!);
+                            new Notice('✅ Time entry deleted');
+                            
+                            // Clear time entry frontmatter (keep note sync status)
+                            const activeFile = this.app.workspace.getActiveFile();
+                            if (activeFile) {
+                                await this.updateFrontmatter(activeFile, {
+                                    kantata_time_entry_id: null,
+                                    kantata_time_synced_at: null,
+                                    kantata_synced_at: new Date().toISOString() // Preserve note sync status
+                                });
+                                setTimeout(() => { void this.updateStatusBarForFile(activeFile); }, 1000);
+                                setTimeout(() => { void this.updateRibbonIcons(activeFile); }, 1000);
+                            }
+                        } catch (err) { const e = err as Error;
+                            new Notice(`❌ Failed to delete time entry: ${e.message}`);
                         }
-                    } catch (err) { const e = err as Error;
-                        new Notice(`❌ Failed to delete time entry: ${e.message}`);
-                    }
+                    })();
                 }
             );
             modal.open();
@@ -3812,7 +3818,7 @@ ${teamMembers}
     /**
      * Open modal to change workspace status
      */
-    async openStatusChangeModal(): Promise<void> {
+    openStatusChangeModal(): void {
         const file = this.app.workspace.getActiveFile();
         if (!file) {
             new Notice('❌ No active file - open a note in a linked folder');
@@ -3843,23 +3849,25 @@ ${teamMembers}
                 this.app,
                 statuses,
                 currentStatus,
-                async (status) => {
-                    try {
-                        new Notice(`🔄 Changing status to ${status.message}...`);
-                        await this.updateWorkspaceStatus(workspaceId, status.key);
-                        
-                        // Update cache
-                        cacheResult.entry.workspaceStatus = status.message;
-                        cacheResult.entry.workspaceStatusColor = status.color;
-                        await this.saveWorkspaceCache();
-                        
-                        // Refresh status bar
-                        await this.updateStatusBarForFile(file);
-                        
-                        new Notice(`✅ Status changed to ${status.message}`);
-                    } catch (err) { const e = err as Error;
-                        new Notice(`❌ Failed to change status: ${e.message}`);
-                    }
+                (status) => {
+                    void (async () => {
+                        try {
+                            new Notice(`🔄 Changing status to ${status.message}...`);
+                            await this.updateWorkspaceStatus(workspaceId, status.key);
+                            
+                            // Update cache
+                            cacheResult.entry.workspaceStatus = status.message;
+                            cacheResult.entry.workspaceStatusColor = status.color;
+                            await this.saveWorkspaceCache();
+                            
+                            // Refresh status bar
+                            await this.updateStatusBarForFile(file);
+                            
+                            new Notice(`✅ Status changed to ${status.message}`);
+                        } catch (err) { const e = err as Error;
+                            new Notice(`❌ Failed to change status: ${e.message}`);
+                        }
+                    })();
                 }
             );
             modal.open();
@@ -3977,7 +3985,7 @@ ${teamMembers}
      */
     async organizeCurrentNote(editor: any): Promise<void> {
         console.debug('[KantataSync] organizeCurrentNote called!');
-        new Notice('🔍 Starting organize...');
+        new Notice('🔍 starting organize...');
         
         const file = this.app.workspace.getActiveFile();
         if (!file) {
@@ -4113,7 +4121,7 @@ class KantataSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        new Setting(containerEl).setName('Settings').setHeading();
+        new Setting(containerEl).setHeading();
 
         // API Settings
         new Setting(containerEl)
@@ -4163,7 +4171,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Auto-sync folders on startup')
-            .setDesc('Automatically create folders for new Kantata projects when Obsidian opens')
+            .setDesc('Automatically create folders for new Kantata projects when obsidian opens')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoSyncFoldersOnStartup)
                 .onChange((value) => {
@@ -4211,7 +4219,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Allowed statuses')
-            .setDesc('Comma-separated list of statuses to include (e.g., Active, In Progress, Not Started)')
+            .setDesc('Comma-separated list of statuses to include (e.g., active, in progress, not started)')
             .addText(text => text
                 .setPlaceholder('Active, In Progress, Not Started')
                 .setValue(this.plugin.settings.allowedStatuses.join(', '))
@@ -4227,7 +4235,7 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Fetch and populate allowed statuses')
             .setDesc('Fetch all statuses from Kantata and populate the allowed list (then remove ones you don\'t want)')
             .addButton(button => button
-                .setButtonText('Fetch & Fill')
+                .setButtonText('Fetch & fill')
                 .onClick(() => {
                     void (async () => {
                         try {
@@ -4253,7 +4261,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Ignore patterns')
-            .setDesc('Workspace names matching these patterns will be skipped. One pattern per line. Use * for wildcard. Variable: {status}')
+            .setDesc('Workspace names matching these patterns will be skipped. one pattern per line. use * for wildcard. variable: {status}')
             .addTextArea(text => text
                 .setPlaceholder('Test*\nInternal*\n*Template')
                 .setValue(this.plugin.settings.ignorePatterns.join('\n'))
@@ -4280,7 +4288,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Dashboard note name')
-            .setDesc('Name of the dashboard note file (e.g., _index.md, README.md)')
+            .setDesc('Name of the dashboard note file (e.g., _index.md, readme.md)')
             .addText(text => text
                 .setPlaceholder('_index.md')
                 .setValue(this.plugin.settings.dashboardNoteName)
@@ -4291,7 +4299,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Show workspace status in status bar')
-            .setDesc('Display workspace status (🟢 Active, 🟡 On Hold, etc.) alongside sync status')
+            .setDesc('Display workspace status (🟢 active, 🟡 on hold, etc.) alongside sync status')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showWorkspaceStatusInStatusBar)
                 .onChange((value) => {
@@ -4299,7 +4307,7 @@ class KantataSettingTab extends PluginSettingTab {
                     void this.plugin.saveSettings();
                     // Refresh status bar
                     const file = this.plugin.app.workspace.getActiveFile();
-                    this.plugin.updateStatusBarForFile(file);
+                    void this.plugin.updateStatusBarForFile(file);
                 }));
 
         new Setting(containerEl)
@@ -4352,7 +4360,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Archive statuses')
-            .setDesc('Manually enter statuses that trigger archiving (comma-separated). Check your Kantata workspace status dropdown for available values.')
+            .setDesc('Manually enter statuses that trigger archiving (comma-separated). check your Kantata workspace status dropdown for available values.')
             .addText(text => text
                 .setPlaceholder('Closed, Cancelled, Completed, Done')
                 .setValue(this.plugin.settings.archiveStatuses.join(', '))
@@ -4449,7 +4457,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'openai') {
             new Setting(containerEl)
-                .setName('OpenAI API key')
+                .setName('Openai API key')
                 .setDesc('Get from platform.openai.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
@@ -4460,7 +4468,7 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('OpenAI model')
+                .setName('Openai model')
                 .addDropdown(dropdown => dropdown
                     .addOption('gpt-4o', 'GPT-4o (recommended)')
                     .addOption('gpt-4o-mini', 'GPT-4o Mini (faster)')
@@ -4502,7 +4510,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'openrouter') {
             new Setting(containerEl)
-                .setName('OpenRouter API key')
+                .setName('Openrouter API key')
                 .setDesc('Get from openrouter.ai/keys (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-or-v1-...')
@@ -4513,8 +4521,8 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('OpenRouter model')
-                .setDesc('Access Claude, GPT, Gemini, Llama, and more with one API key')
+                .setName('Openrouter model')
+                .setDesc('Access claude, gpt, gemini, llama, and more with one API key')
                 .addDropdown(dropdown => dropdown
                     // Anthropic
                     .addOption('anthropic/claude-opus-4', 'Claude Opus 4.5')
@@ -4548,7 +4556,7 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'ollama') {
             new Setting(containerEl)
                 .setName('Ollama endpoint')
-                .setDesc('Local Ollama server URL (no API key needed!)')
+                .setDesc('Local ollama server URL (no API key needed!)')
                 .addText(text => text
                     .setPlaceholder('http://localhost:11434')
                     .setValue(this.plugin.settings.ollamaEndpoint)
@@ -4559,7 +4567,7 @@ class KantataSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Ollama model')
-                .setDesc('Model name (run "ollama list" to see available)')
+                .setDesc('Model name (run"ollama list" to see available)')
                 .addText(text => text
                     .setPlaceholder('llama3.2')
                     .setValue(this.plugin.settings.ollamaModel)
@@ -4620,7 +4628,7 @@ class KantataSettingTab extends PluginSettingTab {
         // Custom template
         new Setting(containerEl)
             .setName('Custom template')
-            .setDesc('Custom template for notes. Use {{customer}}, {{date}}, {{time}} as placeholders.')
+            .setDesc('Custom template for notes. use {{customer}}, {{date}}, {{time}} as placeholders.')
             .addTextArea(text => {
                 text.setPlaceholder('Leave empty for default template...')
                     .setValue(this.plugin.settings.customTemplate)
@@ -4635,7 +4643,7 @@ class KantataSettingTab extends PluginSettingTab {
         // Custom statuses
         new Setting(containerEl)
             .setName('Project statuses')
-            .setDesc('Define statuses by color. Format: color:status1,status2,status3 (one color per line)')
+            .setDesc('Define statuses by color. format: color:status1,status2,status3 (one color per line)')
             .addTextArea(text => {
                 text.setPlaceholder('gray:Not Started,Pending\ngreen:In Progress\nyellow:On Hold\nred:At Risk\nblue:Completed')
                     .setValue(this.plugin.settings.customStatuses)
