@@ -1,5 +1,10 @@
 import { App, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, requestUrl, AbstractInputSuggest } from 'obsidian';
 
+interface RetryableError extends Error {
+    retryable: boolean;
+    status: number;
+}
+
 // Folder suggester for autocomplete
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
     private inputEl: HTMLInputElement;
@@ -561,7 +566,7 @@ export default class KantataSync extends Plugin {
     private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
     private ribbonNoteIcon: HTMLElement | null = null;
     private ribbonTimeIcon: HTMLElement | null = null;
-    private lastTimeEntry: { id: string; workspaceId: string; data: any } | null = null;
+    private lastTimeEntry: { id: string; workspaceId: string; data: Record<string, unknown> } | null = null;
     private isSyncing = false;  // Prevent duplicate submissions
     private debounceTimeout: ReturnType<typeof setTimeout> | null = null;
     
@@ -600,12 +605,12 @@ export default class KantataSync extends Plugin {
         let migrated = false;
         
         for (const [settingsKey, storageKey] of Object.entries(this.SECRET_KEYS)) {
-            const settingsValue = (this.settings as any)[settingsKey];
+            const settingsValue = (this.settings as Record<string, unknown>)[settingsKey] as string;
             const storedValue = this.app.secretStorage.getSecret(storageKey);
             
             if (settingsValue && !storedValue) {
                 this.app.secretStorage.setSecret(storageKey, settingsValue);
-                (this.settings as any)[settingsKey] = '';
+                (this.settings as Record<string, unknown>)[settingsKey] = '';
                 migrated = true;
                 console.debug(`[KantataSync] Migrated ${settingsKey} to SecretStorage`);
             }
@@ -1192,16 +1197,17 @@ export default class KantataSync extends Plugin {
     async fetchWorkspaceStatus(workspaceId: string): Promise<{ status: string; statusColor: string; deleted?: boolean; isArchived?: boolean } | null> {
         try {
             const response = await this.apiRequest(`/workspaces/${workspaceId}.json`);
-            const workspace = Object.values(response.workspaces || {})[0] as any;
+            const workspace = Object.values(response.workspaces || {})[0] as Record<string, unknown> | undefined;
             if (!workspace) return null;
+            const wsStatus = workspace.status as Record<string, string> | undefined;
             return {
-                status: workspace.status?.message || 'Active',
-                statusColor: workspace.status?.color || 'gray',
+                status: wsStatus?.message || 'Active',
+                statusColor: wsStatus?.color || 'gray',
                 isArchived: workspace.archived === true  // Kantata's archived boolean flag
             };
         } catch (err) { const e = err as Error;
             // 404 means workspace was deleted from Kantata
-            if (e.status === 404) {
+            if ((e as Record<string, unknown>).status === 404) {
                 console.debug(`[KantataSync] Workspace ${workspaceId} was deleted from Kantata (404)`);
                 return { status: 'DELETED', statusColor: 'gray', deleted: true };
             }
@@ -1362,7 +1368,7 @@ export default class KantataSync extends Plugin {
         try {
             // Fetch with include_archived to get all possible statuses
             const response = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
-            const workspaces = Object.values(response.workspaces || {}) as any[];
+            const workspaces = Object.values(response.workspaces || {}) as Record<string, unknown>[];
             for (const w of workspaces) {
                 if (w.status?.message) {
                     statuses.add(w.status.message);
@@ -1463,14 +1469,14 @@ export default class KantataSync extends Plugin {
         }
 
         // Note sync icon
-        this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync note to Kantata', async () => {
-            await this.syncCurrentNote();
+        this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync note to Kantata', () => {
+            void this.syncCurrentNote();
         });
         this.ribbonNoteIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-note');
 
         // Time entry icon
-        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'Time entry (create/edit)', async () => {
-            await this.openManualTimeEntryModal();
+        this.ribbonTimeIcon = this.addRibbonIcon('clock', 'Time entry (create/edit)', () => {
+            void this.openManualTimeEntryModal();
         });
         this.ribbonTimeIcon.addClass('kantata-ribbon-icon', 'kantata-ribbon-time');
 
@@ -1705,7 +1711,7 @@ export default class KantataSync extends Plugin {
         this.lastApiCall = Date.now();
     }
 
-    async apiRequest(endpoint: string, method = 'GET', body?: any): Promise<any> {
+    async apiRequest(endpoint: string, method = 'GET', body?: Record<string, unknown>): Promise<Record<string, unknown>> {
         // Check for network connectivity
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
             throw new Error('No internet connection. Please check your network and try again.');
@@ -1737,7 +1743,7 @@ export default class KantataSync extends Plugin {
             }
             return response.json;
         } catch (err) { const e = err as Error;
-            const status = e.status || 'unknown';
+            const status = (e as Record<string, unknown>).status || 'unknown';
             let errorMsg = `Kantata API error (${status})`;
             
             // Try to parse error response body
@@ -1746,12 +1752,12 @@ export default class KantataSync extends Plugin {
                 const errorData = typeof errorText === 'string' && errorText.startsWith('{') 
                     ? JSON.parse(errorText) 
                     : errorText;
-                console.error('[KantataSync] Kantata error response:', errorData);
+                console.warn('[KantataSync] Kantata error response:', errorData);
                 
                 if (errorData?.errors) {
                     // Kantata errors can be array of strings or objects
                     const errors = Array.isArray(errorData.errors)
-                        ? errorData.errors.map((err: any) => 
+                        ? errorData.errors.map((err: unknown) => 
                             typeof err === 'string' ? err : (err.message || JSON.stringify(err))
                           ).join(', ')
                         : JSON.stringify(errorData.errors);
@@ -1771,15 +1777,11 @@ export default class KantataSync extends Plugin {
                 throw new Error('Resource not found. It may have been deleted.');
             } else if (status === 429) {
                 // Will be retried by apiRequestWithRetry
-                const retryError = new Error('Rate limit exceeded. Please wait before trying again.');
-                (retryError as any).retryable = true;
-                (retryError as any).status = 429;
+                const retryError: RetryableError = Object.assign(new Error('Rate limit exceeded. Please wait before trying again.'), { retryable: true, status: 429 });
                 throw retryError;
             } else if (status >= 500) {
                 // Will be retried by apiRequestWithRetry
-                const retryError = new Error('Kantata server error. Please try again later.');
-                (retryError as any).retryable = true;
-                (retryError as any).status = status;
+                const retryError: RetryableError = Object.assign(new Error('Kantata server error. Please try again later.'), { retryable: true, status: status as number });
                 throw retryError;
             }
             throw new Error(errorMsg);
@@ -1790,7 +1792,7 @@ export default class KantataSync extends Plugin {
      * API request with automatic retry for transient failures (429, 5xx)
      * Uses exponential backoff: 1s, 2s, 4s
      */
-    async apiRequestWithRetry(endpoint: string, method = 'GET', body?: any, maxRetries = 3): Promise<any> {
+    async apiRequestWithRetry(endpoint: string, method = 'GET', body?: Record<string, unknown>, maxRetries = 3): Promise<Record<string, unknown>> {
         let lastError: Error | null = null;
         
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -1800,7 +1802,7 @@ export default class KantataSync extends Plugin {
                 lastError = e;
                 
                 // Only retry on retryable errors (429, 5xx)
-                if (e.retryable && attempt < maxRetries - 1) {
+                if ((e as RetryableError).retryable && attempt < maxRetries - 1) {
                     const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
                     console.debug(`[KantataSync] Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries}): ${e.message}`);
                     await new Promise(r => setTimeout(r, delay));
@@ -1839,7 +1841,7 @@ export default class KantataSync extends Plugin {
     /**
      * Extract image paths from note content (Obsidian format)
      */
-    extractImagePaths(content: string, file: any): string[] {
+    extractImagePaths(content: string, file: TFile): string[] {
         const images: string[] = [];
         
         // Match ![[image.png]] or ![[folder/image.png]]
@@ -1861,7 +1863,7 @@ export default class KantataSync extends Plugin {
     /**
      * Read image file as base64
      */
-    async readImageAsBase64(imagePath: string, noteFile: any): Promise<{ base64: string; mediaType: string } | null> {
+    async readImageAsBase64(imagePath: string, noteFile: TFile): Promise<{ base64: string; mediaType: string } | null> {
         try {
             // Resolve path relative to note's folder or vault root
             let fullPath = imagePath;
@@ -1889,7 +1891,7 @@ export default class KantataSync extends Plugin {
                 return null;
             }
             
-            const arrayBuffer = await this.app.vault.readBinary(imageFile as any);
+            const arrayBuffer = await this.app.vault.readBinary(imageFile as TFile);
             const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
             
             const ext = imagePath.split('.').pop()?.toLowerCase() || 'png';
@@ -1897,7 +1899,7 @@ export default class KantataSync extends Plugin {
             
             return { base64, mediaType };
         } catch (e) {
-            console.error(`[KantataSync] Failed to read image: ${imagePath}`, e);
+            console.warn(`[KantataSync] Failed to read image: ${imagePath}`, e);
             return null;
         }
     }
@@ -1914,7 +1916,7 @@ export default class KantataSync extends Plugin {
         };
 
         // Build message content - text and optional images
-        const content: Array<any> = [];
+        const content: Array<Record<string, unknown>> = [];
         
         // Add images first if provided
         if (images && images.length > 0) {
@@ -1951,7 +1953,7 @@ export default class KantataSync extends Plugin {
             let errorMsg = `Anthropic API error (${response.status})`;
             try {
                 const errorData = response.json;
-                console.error('[KantataSync] Anthropic error response:', errorData);
+                console.warn('[KantataSync] Anthropic error response:', errorData);
                 if (errorData?.error?.message) {
                     errorMsg = `${errorMsg}: ${errorData.error.message}`;
                 } else if (errorData?.message) {
@@ -2115,12 +2117,12 @@ export default class KantataSync extends Plugin {
             const response = await this.apiRequest(
                 `/stories.json?workspace_id=${workspaceId}&per_page=50&include=workspace`
             );
-            const stories = Object.values(response.stories || {}) as any[];
+            const stories = Object.values(response.stories || {}) as Record<string, unknown>[];
             
             // Filter to stories that can have time logged (not archived, has budget or is billable)
             const billable = stories
-                .filter((s: any) => s.state !== 'archived' && s.state !== 'deleted')
-                .map((s: any) => ({
+                .filter((s: Record<string, unknown>) => s.state !== 'archived' && s.state !== 'deleted')
+                .map((s: Record<string, unknown>) => ({
                     id: String(s.id),
                     title: s.title || s.name || 'Untitled Task'
                 }));
@@ -2208,7 +2210,7 @@ JSON:`;
                 notes: String(parsed.notes || '')
             };
         } catch {
-            console.error('[KantataSync] Failed to parse AI response:', responseText);
+            console.warn('[KantataSync] Failed to parse AI response:', responseText);
             throw new Error('Failed to parse AI response as JSON');
         }
     }
@@ -2406,7 +2408,7 @@ OUTPUT:`;
             time_entry: timeEntryData
         });
         
-        const entries = Object.values(response.time_entries || {}) as any[];
+        const entries = Object.values(response.time_entries || {}) as Record<string, unknown>[];
         if (entries.length > 0) {
             console.debug(`[KantataSync] Created time entry: ${entries[0].id}`);
             return entries[0].id;
@@ -2443,7 +2445,7 @@ OUTPUT:`;
      */
     async getCurrentUserId(): Promise<string> {
         const response = await this.apiRequest('/users/me.json');
-        const users = Object.values(response.users || {}) as any[];
+        const users = Object.values(response.users || {}) as Record<string, unknown>[];
         if (users.length > 0) {
             return users[0].id;
         }
@@ -2534,7 +2536,7 @@ OUTPUT:`;
             
             return { success: true, timeEntryId };
         } catch (err) { const e = err as Error;
-            console.error('[KantataSync] AI time entry failed:', e);
+            console.warn('[KantataSync] AI time entry failed:', e);
             return { success: false, error: e.message };
         }
     }
@@ -2558,7 +2560,7 @@ OUTPUT:`;
         }
 
         const response = await this.apiRequest(`/workspaces.json?${params.toString()}`);
-        const workspaces = Object.values(response.workspaces || {}) as any[];
+        const workspaces = Object.values(response.workspaces || {}) as Record<string, unknown>[];
         const exact = workspaces.find(w => w.title.toLowerCase() === customerName.toLowerCase());
 
         if (exact) {
@@ -2591,7 +2593,7 @@ OUTPUT:`;
             }
 
             const response = await this.apiRequest(`/workspaces.json?${params.toString()}`);
-            const workspaces = Object.values(response.workspaces || {}) as any[];
+            const workspaces = Object.values(response.workspaces || {}) as Record<string, unknown>[];
             
             if (workspaces.length === 0) break;
             
@@ -2623,11 +2625,11 @@ OUTPUT:`;
     async fetchWorkspaceDetails(workspaceId: string): Promise<WorkspaceDetails | null> {
         try {
             const response = await this.apiRequest(`/workspaces/${workspaceId}.json?include=participants`);
-            const workspace = Object.values(response.workspaces || {})[0] as any;
+            const workspace = Object.values(response.workspaces || {})[0] as Record<string, unknown> | undefined;
             if (!workspace) return null;
 
-            const users = response.users || {};
-            const participants = (workspace.participant_ids || []).map((id: string) => {
+            const users = (response.users || {}) as Record<string, Record<string, string>>;
+            const participants = ((workspace.participant_ids || []) as string[]).map((id: string) => {
                 const user = users[id];
                 return {
                     id,
@@ -2637,14 +2639,14 @@ OUTPUT:`;
             });
 
             // Get primary maven details
-            const primaryMavenUser = workspace.primary_maven_id ? users[workspace.primary_maven_id] : null;
+            const primaryMavenUser = workspace.primary_maven_id ? users[workspace.primary_maven_id as string] : null;
 
             return {
-                id: workspace.id,
-                title: workspace.title,
-                description: workspace.description || '',
-                status: workspace.status?.message || 'Active',
-                statusColor: workspace.status?.color || 'gray',
+                id: workspace.id as string,
+                title: workspace.title as string,
+                description: (workspace.description as string) || '',
+                status: (workspace.status as Record<string, string>)?.message || 'Active',
+                statusColor: (workspace.status as Record<string, string>)?.color || 'gray',
                 startDate: workspace.start_date || '',
                 dueDate: workspace.due_date || workspace.effective_due_date || '',
                 budgeted: workspace.budgeted || false,
@@ -2661,7 +2663,7 @@ OUTPUT:`;
             };
         } catch (err) { const e = err as Error;
             // 404 means workspace was deleted from Kantata
-            if (e.status === 404) {
+            if ((e as Record<string, unknown>).status === 404) {
                 console.debug(`[KantataSync] Workspace ${workspaceId} was deleted from Kantata (404)`);
                 return {
                     id: workspaceId,
@@ -3020,7 +3022,7 @@ ${teamMembers}
 
             return null;
         } catch (err) { const e = err as Error;
-            console.error('Workspace picker error:', e);
+            console.warn('Workspace picker error:', e);
             new Notice(`Error selecting workspace: ${e.message}`);
             return null;
         }
@@ -3031,7 +3033,7 @@ ${teamMembers}
     async checkForConflict(postId: string, syncedAt: string): Promise<boolean> {
         try {
             const response = await this.apiRequest(`/posts/${postId}.json`);
-            const posts = Object.values(response.posts || {}) as any[];
+            const posts = Object.values(response.posts || {}) as Record<string, unknown>[];
             if (posts.length === 0) return false;
 
             const post = posts[0];
@@ -3052,7 +3054,7 @@ ${teamMembers}
             }
         });
 
-        const posts = Object.values(response.posts || {}) as any[];
+        const posts = Object.values(response.posts || {}) as Record<string, unknown>[];
         if (posts.length > 0) {
             return posts[0].id;
         }
@@ -3117,7 +3119,7 @@ ${teamMembers}
         }, 'Delete', 'Cancel').open();
     }
 
-    parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
+    parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } {
         if (!content.startsWith('---')) {
             return { frontmatter: {}, body: content };
         }
@@ -3138,7 +3140,7 @@ ${teamMembers}
 
         const fmContent = lines.slice(1, endIndex).join('\n');
         const body = lines.slice(endIndex + 1).join('\n').trim();
-        const frontmatter: Record<string, any> = {};
+        const frontmatter: Record<string, unknown> = {};
 
         for (const line of fmContent.split('\n')) {
             const match = line.match(/^(\w+):\s*(.*)$/);
@@ -3156,7 +3158,7 @@ ${teamMembers}
         return { frontmatter, body };
     }
 
-    async updateFrontmatter(file: TFile, updates: Record<string, any>): Promise<void> {
+    async updateFrontmatter(file: TFile, updates: Record<string, unknown>): Promise<void> {
         const content = await this.app.vault.read(file);
         const { frontmatter, body } = this.parseFrontmatter(content);
         
@@ -3373,7 +3375,7 @@ ${teamMembers}
 
             return { success: true, postId };
         } catch (err) { const e = err as Error;
-            console.error('[KantataSync] syncNote ERROR:', e);
+            console.warn('[KantataSync] syncNote ERROR:', e);
             return { success: false, error: e.message };
         }
     }
@@ -3404,10 +3406,10 @@ ${teamMembers}
             const result = await this.syncNote(file);
 
             if (result.success && result.updated) {
-                new Notice(`🔄 Updated in Kantata! Post ID: ${result.postId}`);
+                new Notice(`🔄 Updated in Kantata! post ID: ${result.postId}`);
                 void this.updateStatusBar('📝 Note Sync: ✅ Updated', 'Note synced to Kantata');
             } else if (result.success && result.postId) {
-                new Notice(`✅ Synced to Kantata! Post ID: ${result.postId}`);
+                new Notice(`✅ Synced to Kantata! post ID: ${result.postId}`);
                 void this.updateStatusBar('📝 Note Sync: ✅ Synced', 'Note synced to Kantata');
             } else {
                 new Notice(`❌ Sync failed: ${result.error}`);
@@ -3788,9 +3790,9 @@ ${teamMembers}
     async getWorkspaceTasks(workspaceId: string): Promise<TaskOption[]> {
         const response = await this.apiRequest(`/stories.json?workspace_id=${workspaceId}&per_page=100`);
         // Kantata returns stories as an object keyed by ID, not an array
-        const stories = Object.values(response.stories || {}) as any[];
+        const stories = Object.values(response.stories || {}) as Record<string, unknown>[];
         
-        return stories.map((story: any) => ({
+        return stories.map((story: Record<string, unknown>) => ({
             id: story.id.toString(),
             title: story.title || `Task ${story.id}`
         }));
@@ -3799,9 +3801,9 @@ ${teamMembers}
     /**
      * Get time entry details by ID
      */
-    async getTimeEntry(timeEntryId: string): Promise<any> {
+    async getTimeEntry(timeEntryId: string): Promise<Record<string, unknown> | null> {
         const response = await this.apiRequest(`/time_entries/${timeEntryId}.json`);
-        const entries = Object.values(response.time_entries || {}) as any[];
+        const entries = Object.values(response.time_entries || {}) as Record<string, unknown>[];
         return entries[0] || null;
     }
 
@@ -3983,9 +3985,9 @@ ${teamMembers}
     /**
      * Organize current note using AI template
      */
-    async organizeCurrentNote(editor: any): Promise<void> {
+    async organizeCurrentNote(editor: { getValue(): string; setValue(value: string): void }): Promise<void> {
         console.debug('[KantataSync] organizeCurrentNote called!');
-        new Notice('🔍 starting organize...');
+        new Notice('🔍 Starting organize...');
         
         const file = this.app.workspace.getActiveFile();
         if (!file) {
@@ -4094,7 +4096,7 @@ ${teamMembers}
                     // Rename file
                     const newPath = `${folder.path}/${newName}.md`;
                     await this.app.fileManager.renameFile(file, newPath);
-                    new Notice(`✅ Notes organized! Renamed to: ${newName}`);
+                    new Notice(`✅ Notes organized! renamed to: ${newName}`);
                 } else {
                     new Notice('✅ Notes organized!');
                 }
@@ -4171,7 +4173,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Auto-sync folders on startup')
-            .setDesc('Automatically create folders for new Kantata projects when obsidian opens')
+            .setDesc('Automatically create folders for new Kantata projects when Obsidian opens')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoSyncFoldersOnStartup)
                 .onChange((value) => {
@@ -4261,7 +4263,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Ignore patterns')
-            .setDesc('Workspace names matching these patterns will be skipped. one pattern per line. use * for wildcard. variable: {status}')
+            .setDesc('Workspace names matching these patterns will be skipped. One pattern per line. Use * for wildcard. Variable: {status}')
             .addTextArea(text => text
                 .setPlaceholder('Test*\nInternal*\n*Template')
                 .setValue(this.plugin.settings.ignorePatterns.join('\n'))
@@ -4360,7 +4362,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Archive statuses')
-            .setDesc('Manually enter statuses that trigger archiving (comma-separated). check your Kantata workspace status dropdown for available values.')
+            .setDesc('Manually enter statuses that trigger archiving (comma-separated). Check your Kantata workspace status dropdown for available values.')
             .addText(text => text
                 .setPlaceholder('Closed, Cancelled, Completed, Done')
                 .setValue(this.plugin.settings.archiveStatuses.join(', '))
@@ -4457,7 +4459,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'openai') {
             new Setting(containerEl)
-                .setName('Openai API key')
+                .setName('OpenAI API key')
                 .setDesc('Get from platform.openai.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
@@ -4468,7 +4470,7 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('Openai model')
+                .setName('OpenAI model')
                 .addDropdown(dropdown => dropdown
                     .addOption('gpt-4o', 'GPT-4o (recommended)')
                     .addOption('gpt-4o-mini', 'GPT-4o Mini (faster)')
@@ -4510,7 +4512,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         if (provider === 'openrouter') {
             new Setting(containerEl)
-                .setName('Openrouter API key')
+                .setName('OpenRouter API key')
                 .setDesc('Get from openrouter.ai/keys (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-or-v1-...')
@@ -4521,8 +4523,8 @@ class KantataSettingTab extends PluginSettingTab {
                     .inputEl.type = 'password');
 
             new Setting(containerEl)
-                .setName('Openrouter model')
-                .setDesc('Access claude, gpt, gemini, llama, and more with one API key')
+                .setName('OpenRouter model')
+                .setDesc('Access Claude, GPT, Gemini, Llama, and more with one API key')
                 .addDropdown(dropdown => dropdown
                     // Anthropic
                     .addOption('anthropic/claude-opus-4', 'Claude Opus 4.5')
@@ -4556,7 +4558,7 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'ollama') {
             new Setting(containerEl)
                 .setName('Ollama endpoint')
-                .setDesc('Local ollama server URL (no API key needed!)')
+                .setDesc('Local Ollama server URL (no API key needed!)')
                 .addText(text => text
                     .setPlaceholder('http://localhost:11434')
                     .setValue(this.plugin.settings.ollamaEndpoint)
@@ -4628,7 +4630,7 @@ class KantataSettingTab extends PluginSettingTab {
         // Custom template
         new Setting(containerEl)
             .setName('Custom template')
-            .setDesc('Custom template for notes. use {{customer}}, {{date}}, {{time}} as placeholders.')
+            .setDesc('Custom template for notes. Use {{customer}}, {{date}}, {{time}} as placeholders.')
             .addTextArea(text => {
                 text.setPlaceholder('Leave empty for default template...')
                     .setValue(this.plugin.settings.customTemplate)
@@ -4643,7 +4645,7 @@ class KantataSettingTab extends PluginSettingTab {
         // Custom statuses
         new Setting(containerEl)
             .setName('Project statuses')
-            .setDesc('Define statuses by color. format: color:status1,status2,status3 (one color per line)')
+            .setDesc('Define statuses by color. Format: color:status1,status2,status3 (one color per line)')
             .addTextArea(text => {
                 text.setPlaceholder('gray:Not Started,Pending\ngreen:In Progress\nyellow:On Hold\nred:At Risk\nblue:Completed')
                     .setValue(this.plugin.settings.customStatuses)
@@ -4727,11 +4729,11 @@ class KantataSettingTab extends PluginSettingTab {
                     // Toggle
                     const toggleContainer = row.createDiv({ cls: 'setting-item-control' });
                     const toggle = toggleContainer.createEl('div', { cls: 'checkbox-container kantata-sortable-toggle' });
-                    toggle.classList.toggle('is-enabled', this.plugin.settings[item.key] as boolean);
+                    toggle.classList.toggle('is-enabled', Boolean(this.plugin.settings[item.key]));
                     toggle.onclick = (e) => {
                         e.stopPropagation();
                         const newValue = !this.plugin.settings[item.key];
-                        (this.plugin.settings as any)[item.key] = newValue;
+                        (this.plugin.settings as Record<string, unknown>)[item.key] = newValue;
                         toggle.classList.toggle('is-enabled', newValue);
                         void this.plugin.saveSettings();
                     };
