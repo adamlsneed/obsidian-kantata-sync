@@ -5,6 +5,43 @@ interface RetryableError extends Error {
     status: number;
 }
 
+// API response interfaces for type safety
+interface AnthropicResponse {
+    content?: Array<{ text?: string }>;
+    error?: { message?: string };
+    message?: string;
+}
+
+interface OpenAIResponse {
+    choices?: Array<{ message?: { content?: string } }>;
+}
+
+interface GeminiResponse {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+}
+
+interface OllamaResponse {
+    response?: string;
+}
+
+interface KantataErrorResponse {
+    errors?: Array<string | { message?: string }>;
+}
+
+interface KantataWorkspaceRaw {
+    id: string;
+    title: string;
+    status?: { message?: string; color?: string };
+}
+
+
+interface TimeEntryParsed {
+    summary: string;
+    category: string;
+    hours: number;
+    notes: string;
+}
+
 // Folder suggester for autocomplete
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
     private inputEl: HTMLInputElement;
@@ -434,13 +471,13 @@ class ManualTimeEntryModal extends Modal {
                     return;
                 }
                 aiBtn.disabled = true;
-                aiBtn.textContent = '✨ Enhancing...';
+                aiBtn.textContent = '✨ enhancing...';
                 void (async () => {
                     try {
                         const enhanced = await this.plugin.proofreadForKantata(this.notes);
                         this.notes = enhanced;
                         notesInput.value = enhanced;
-                        new Notice('✅ Notes enhanced!');
+                        new Notice('✅ notes enhanced!');
                     } catch (err) {
                         const e = err as Error;
                         new Notice(`❌ AI failed: ${e.message}`);
@@ -711,7 +748,7 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'create-time-entry',
-            name: 'AI: Create time entry for current note',
+            name: 'AI: create time entry for current note',
             editorCallback: (editor, view) => {
                 void this.createTimeEntryForCurrentNote();
             }
@@ -735,7 +772,7 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'organize-notes',
-            name: 'AI: Organize notes into template',
+            name: 'AI: organize notes into template',
             editorCallback: (editor, view) => {
                 void this.organizeCurrentNote(editor);
             }
@@ -767,13 +804,13 @@ export default class KantataSync extends Plugin {
                 aiOrganize: () => {
                     if (this.settings.menuShowAiOrganize && this.settings.enableAiTimeEntry) {
                         menu.addItem((item) => {
-                            item.setTitle('✨ AI: Organize notes')
+                            item.setTitle('✨ AI: organize notes')
                                 .onClick(() => {
                                     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                                     if (view?.editor) {
                                         void this.organizeCurrentNote(view.editor);
                                     } else {
-                                        new Notice('Open a markdown file first');
+                                        new Notice('Open a Markdown file first');
                                     }
                                 });
                         });
@@ -798,14 +835,14 @@ export default class KantataSync extends Plugin {
                     if (this.settings.menuShowAiTimeEntry && this.settings.enableAiTimeEntry) {
                         if (hasTimeEntry) {
                             menu.addItem((item) => {
-                                item.setTitle('⏱️ AI: Update time entry')
+                                item.setTitle('⏱️ AI: update time entry')
                                     .onClick(() => {
                                         void this.updateTimeEntryWithAI();
                                     });
                             });
                         } else {
                             menu.addItem((item) => {
-                                item.setTitle('⏱️ AI: Create time entry')
+                                item.setTitle('⏱️ AI: create time entry')
                                     .onClick(() => {
                                         void this.createTimeEntryForCurrentNote();
                                     });
@@ -831,7 +868,7 @@ export default class KantataSync extends Plugin {
                 changeStatus: () => {
                     if (this.settings.menuShowChangeStatus) {
                         menu.addItem((item) => {
-                            item.setTitle('🎯 Change project status')
+                            item.setTitle('🎯 change project status')
                                 .onClick(() => {
                                     void this.openStatusChangeModal();
                                 });
@@ -843,7 +880,7 @@ export default class KantataSync extends Plugin {
                 openInKantata: () => {
                     if (this.settings.menuShowOpenInKantata) {
                         menu.addItem((item) => {
-                            item.setTitle('🔗 Open in Kantata')
+                            item.setTitle('🔗 open in Kantata')
                                 .onClick(() => {
                                     void this.openInKantata();
                                 });
@@ -855,7 +892,7 @@ export default class KantataSync extends Plugin {
                 deleteFromKantata: () => {
                     if (this.settings.menuShowDeleteFromKantata && isSynced) {
                         menu.addItem((item) => {
-                            item.setTitle('🗑️ Delete from Kantata')
+                            item.setTitle('🗑️ delete from Kantata')
                                 .onClick(() => {
                                     void this.deleteFromKantata();
                                 });
@@ -1001,7 +1038,7 @@ export default class KantataSync extends Plugin {
 
     async syncWorkspaces(showNotice = false): Promise<void> {
         if (!this.getSecret('kantataToken')) {
-            if (showNotice) new Notice('❌ No Kantata token configured');
+            if (showNotice) new Notice('❌ no Kantata token configured');
             console.debug('[KantataSync] Sync skipped - no token');
             return;
         }
@@ -1147,7 +1184,7 @@ export default class KantataSync extends Plugin {
                 if (parts.length > 0) {
                     new Notice(`✅ Sync complete: ${parts.join(', ')}`);
                 } else {
-                    new Notice('✅ Sync complete: No changes');
+                    new Notice('✅ sync complete: no changes');
                 }
                 void this.updateStatusBar('📝 Note Sync: ✅ Complete', 'Workspace sync complete');
                 setTimeout(() => {
@@ -1368,7 +1405,7 @@ export default class KantataSync extends Plugin {
         try {
             // Fetch with include_archived to get all possible statuses
             const response = await this.apiRequest('/workspaces.json?per_page=200&include_archived=true');
-            const workspaces = Object.values(response.workspaces || {}) as Record<string, unknown>[];
+            const workspaces = Object.values(response.workspaces || {}) as KantataWorkspaceRaw[];
             for (const w of workspaces) {
                 if (w.status?.message) {
                     statuses.add(w.status.message);
@@ -1384,7 +1421,7 @@ export default class KantataSync extends Plugin {
     // ==================== SETTINGS ====================
 
     async loadSettings(): Promise<void> {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<typeof DEFAULT_SETTINGS>);
     }
 
     async saveSettings(): Promise<void> {
@@ -1398,7 +1435,7 @@ export default class KantataSync extends Plugin {
             const exists = await this.app.vault.adapter.exists('.kantatasync-cache.json');
             if (exists) {
                 const data = await this.app.vault.adapter.read('.kantatasync-cache.json');
-                this.workspaceCache = JSON.parse(data);
+                this.workspaceCache = JSON.parse(data) as Record<string, { workspaceId: string; workspaceTitle: string; cachedAt: string }>;
                 console.debug('[KantataSync] Cache loaded:', Object.keys(this.workspaceCache).length, 'entries');
             }
         } catch (e) {
@@ -1741,24 +1778,27 @@ export default class KantataSync extends Plugin {
             if (method === 'DELETE') {
                 return { success: true };
             }
-            return response.json;
-        } catch (err) { const e = err as Error;
-            const status = (e as Record<string, unknown>).status || 'unknown';
-            let errorMsg = `Kantata API error (${status})`;
+            return response.json as Record<string, unknown>;
+        } catch (err) {
+            const e = err instanceof Error ? err : new Error(String(err));
+            const errRecord = err as Record<string, unknown>;
+            const status = (typeof errRecord.status === 'number' ? errRecord.status : 0) || 'unknown';
+            let errorMsg = `Kantata API error (${String(status)})`;
             
             // Try to parse error response body
             try {
-                const errorText = e.response || e.text || e.message || '';
-                const errorData = typeof errorText === 'string' && errorText.startsWith('{') 
-                    ? JSON.parse(errorText) 
-                    : errorText;
-                console.warn('[KantataSync] Kantata error response:', errorData);
+                const rawErr: unknown = errRecord.response ?? errRecord.text ?? e.message ?? '';
+                const errorText = String(rawErr);
+                const errorData: KantataErrorResponse | null = typeof errorText === 'string' && errorText.startsWith('{') 
+                    ? JSON.parse(errorText) as KantataErrorResponse
+                    : null;
+                console.warn('[KantataSync] Kantata error response:', errorData ?? errorText);
                 
                 if (errorData?.errors) {
                     // Kantata errors can be array of strings or objects
                     const errors = Array.isArray(errorData.errors)
-                        ? errorData.errors.map((err: unknown) => 
-                            typeof err === 'string' ? err : (err.message || JSON.stringify(err))
+                        ? errorData.errors.map((errItem: string | { message?: string }) => 
+                            typeof errItem === 'string' ? errItem : (errItem.message ?? JSON.stringify(errItem))
                           ).join(', ')
                         : JSON.stringify(errorData.errors);
                     errorMsg = `${errorMsg}: ${errors}`;
@@ -1812,7 +1852,7 @@ export default class KantataSync extends Plugin {
             }
         }
         
-        throw lastError;
+        throw lastError ?? new Error('All retries exhausted');
     }
 
     // ==================== AI TIME ENTRY ====================
@@ -1835,7 +1875,7 @@ export default class KantataSync extends Plugin {
             case 'manual':
                 throw new Error('Manual mode does not use AI');
             default:
-                throw new Error(`Unknown AI provider: ${this.settings.aiProvider}`);
+                throw new Error(`Unknown AI provider: ${String(this.settings.aiProvider)}`);
         }
     }
     /**
@@ -1891,7 +1931,11 @@ export default class KantataSync extends Plugin {
                 return null;
             }
             
-            const arrayBuffer = await this.app.vault.readBinary(imageFile as TFile);
+            if (!(imageFile instanceof TFile)) {
+                console.debug(`[KantataSync] Not a file: ${fullPath}`);
+                return null;
+            }
+            const arrayBuffer = await this.app.vault.readBinary(imageFile);
             const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
             
             const ext = imagePath.split('.').pop()?.toLowerCase() || 'png';
@@ -1950,25 +1994,25 @@ export default class KantataSync extends Plugin {
 
         // Check for errors
         if (response.status >= 400) {
-            let errorMsg = `Anthropic API error (${response.status})`;
+            let errorMsg = `Anthropic API error (${String(response.status)})`;
             try {
-                const errorData = response.json;
+                const errorData = response.json as AnthropicResponse;
                 console.warn('[KantataSync] Anthropic error response:', errorData);
                 if (errorData?.error?.message) {
                     errorMsg = `${errorMsg}: ${errorData.error.message}`;
                 } else if (errorData?.message) {
                     errorMsg = `${errorMsg}: ${errorData.message}`;
                 } else {
-                    errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) || 'Unknown error'}`;
+                    errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) ?? 'Unknown error'}`;
                 }
             } catch {
-                errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) || 'Unknown error'}`;
+                errorMsg = `${errorMsg}: ${response.text?.slice(0, 200) ?? 'Unknown error'}`;
             }
             throw new Error(errorMsg);
         }
 
-        const data = response.json;
-        if (data.content && data.content[0] && data.content[0].text) {
+        const data = response.json as AnthropicResponse;
+        if (data.content?.[0]?.text) {
             return data.content[0].text;
         }
         throw new Error('Unexpected Anthropic API response format');
@@ -1996,8 +2040,8 @@ export default class KantataSync extends Plugin {
             })
         });
 
-        const data = response.json;
-        if (data.choices && data.choices[0] && data.choices[0].message) {
+        const data = response.json as OpenAIResponse;
+        if (data.choices?.[0]?.message?.content) {
             return data.choices[0].message.content;
         }
         throw new Error('Unexpected OpenAI API response format');
@@ -2024,12 +2068,9 @@ export default class KantataSync extends Plugin {
             })
         });
 
-        const data = response.json;
-        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-            const parts = data.candidates[0].content.parts;
-            if (parts && parts[0] && parts[0].text) {
-                return parts[0].text;
-            }
+        const data = response.json as GeminiResponse;
+        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+            return data.candidates[0].content.parts[0].text;
         }
         throw new Error('Unexpected Google AI API response format');
     }
@@ -2058,8 +2099,8 @@ export default class KantataSync extends Plugin {
             })
         });
 
-        const data = response.json;
-        if (data.choices && data.choices[0] && data.choices[0].message) {
+        const data = response.json as OpenAIResponse;
+        if (data.choices?.[0]?.message?.content) {
             return data.choices[0].message.content;
         }
         throw new Error('Unexpected OpenRouter API response format');
@@ -2085,7 +2126,7 @@ export default class KantataSync extends Plugin {
             })
         });
 
-        const data = response.json;
+        const data = response.json as OllamaResponse;
         if (data.response) {
             return data.response;
         }
@@ -2198,7 +2239,7 @@ JSON:`;
         }
         
         try {
-            const parsed = JSON.parse(jsonStr);
+            const parsed = JSON.parse(jsonStr) as TimeEntryParsed;
             // Round hours to nearest 15-minute increment (0.25)
             const rawHours = Number(parsed.hours) || 1;
             const roundedHours = Math.round(rawHours * 4) / 4;
@@ -2401,14 +2442,14 @@ OUTPUT:`;
             workspace_id: timeEntryData.workspace_id, 
             time_in_minutes: timeEntryData.time_in_minutes,
             date: timeEntryData.date_performed,
-            story_id: timeEntryData.story_id || 'none'
+            story_id: String(timeEntryData.story_id ?? 'none')
         });
 
         const response = await this.apiRequest('/time_entries.json', 'POST', {
             time_entry: timeEntryData
         });
         
-        const entries = Object.values(response.time_entries || {}) as Record<string, unknown>[];
+        const entries = Object.values(response.time_entries || {}) as Array<{ id: string }>;
         if (entries.length > 0) {
             console.debug(`[KantataSync] Created time entry: ${entries[0].id}`);
             return entries[0].id;
@@ -2560,7 +2601,7 @@ OUTPUT:`;
         }
 
         const response = await this.apiRequest(`/workspaces.json?${params.toString()}`);
-        const workspaces = Object.values(response.workspaces || {}) as Record<string, unknown>[];
+        const workspaces = Object.values(response.workspaces || {}) as KantataWorkspaceRaw[];
         const exact = workspaces.find(w => w.title.toLowerCase() === customerName.toLowerCase());
 
         if (exact) {
@@ -2593,7 +2634,7 @@ OUTPUT:`;
             }
 
             const response = await this.apiRequest(`/workspaces.json?${params.toString()}`);
-            const workspaces = Object.values(response.workspaces || {}) as Record<string, unknown>[];
+            const workspaces = Object.values(response.workspaces || {}) as KantataWorkspaceRaw[];
             
             if (workspaces.length === 0) break;
             
@@ -2951,7 +2992,7 @@ ${teamMembers}
             }
             new Notice(`✅ Dashboard refreshed for "${cacheResult.path}"`);
         } else {
-            new Notice(`❌ Failed to refresh dashboard`);
+            new Notice(`❌ failed to refresh dashboard`);
         }
     }
 
@@ -3054,12 +3095,13 @@ ${teamMembers}
             }
         });
 
-        const posts = Object.values(response.posts || {}) as Record<string, unknown>[];
+        const posts = Object.values(response.posts || {}) as Array<{ id: string }>;
         if (posts.length > 0) {
             return posts[0].id;
         }
-        if (response.results && response.results.length > 0) {
-            return response.results[0].id;
+        const results = response.results as Array<{ id: string }> | undefined;
+        if (results && results.length > 0) {
+            return results[0].id;
         }
         throw new Error('Failed to get post ID from response');
     }
@@ -3080,7 +3122,7 @@ ${teamMembers}
     async deleteFromKantata(): Promise<void> {
         const file = this.app.workspace.getActiveFile();
         if (!file) {
-            new Notice('❌ No active file');
+            new Notice('❌ no active file');
             return;
         }
 
@@ -3088,7 +3130,7 @@ ${teamMembers}
         const { frontmatter } = this.parseFrontmatter(content);
         
         if (!frontmatter.kantata_post_id) {
-            new Notice('❌ This note has not been synced to Kantata');
+            new Notice('❌ this note has not been synced to Kantata');
             return;
         }
 
@@ -3096,7 +3138,7 @@ ${teamMembers}
         new ConfirmModal(this.app, 'Delete this post from Kantata? This cannot be undone.', () => {
             void (async () => {
                 try {
-                    new Notice('🗑️ Deleting from Kantata...');
+                    new Notice('🗑️ deleting from Kantata...');
                     await this.deletePost(frontmatter.kantata_post_id);
                     
                     // Clear sync frontmatter
@@ -3106,7 +3148,7 @@ ${teamMembers}
                         kantata_synced_at: null
                     });
                     
-                    new Notice('✅ Post deleted from Kantata');
+                    new Notice('✅ post deleted from Kantata');
                     
                     // Refresh status bar
                     await this.updateStatusBarForFile(file);
@@ -3183,10 +3225,10 @@ ${teamMembers}
                         return `${k}: "${v}"`;
                     } else {
                         // No single quotes - use single quotes
-                        return `${k}: '${v}'`;
+                        return `${k}: '${String(v)}'`;
                     }
                 }
-                return `${k}: ${v}`;
+                return `${k}: ${String(v)}`;
             })
             .join('\n');
 
@@ -3313,7 +3355,7 @@ ${teamMembers}
         }
 
         const fmString = Object.entries(frontmatter)
-            .map(([k, v]) => typeof v === 'string' ? `${k}: '${v}'` : `${k}: ${v}`)
+            .map(([k, v]) => typeof v === 'string' ? `${k}: '${v}'` : `${k}: ${String(v)}`)
             .join('\n');
 
         const newContent = `---\n${fmString}\n---\n\n${newBody}`;
@@ -3383,7 +3425,7 @@ ${teamMembers}
     async syncCurrentNote(): Promise<void> {
         // Prevent duplicate submissions
         if (this.isSyncing) {
-            new Notice('⏳ Sync already in progress...');
+            new Notice('⏳ sync already in progress...');
             return;
         }
 
@@ -3394,7 +3436,7 @@ ${teamMembers}
         }
 
         if (file.extension !== 'md') {
-            new Notice('Not a markdown file');
+            new Notice('Not a Markdown file');
             return;
         }
 
@@ -3433,7 +3475,7 @@ ${teamMembers}
         }
 
         if (file.extension !== 'md') {
-            new Notice('Not a markdown file');
+            new Notice('Not a Markdown file');
             return;
         }
 
@@ -3461,7 +3503,10 @@ ${teamMembers}
 
         // Check if time entry already exists
         if (frontmatter.kantata_time_entry_id) {
-            new Notice(`⚠️ Time entry already exists: ${frontmatter.kantata_time_entry_id}`);
+            const entryId = typeof frontmatter.kantata_time_entry_id === 'string' 
+                ? frontmatter.kantata_time_entry_id 
+                : JSON.stringify(frontmatter.kantata_time_entry_id);
+            new Notice(`⚠️ Time entry already exists: ${entryId}`);
             return;
         }
 
@@ -3485,7 +3530,7 @@ ${teamMembers}
 
         // Create time entry
         void this.updateStatusBar('⏱️ Time: ⏳', 'Creating time entry...');
-        new Notice('🤖 Analyzing note and creating time entry...');
+        new Notice('🤖 analyzing note and creating time entry...');
 
         const result = await this.processAiTimeEntry(workspaceId, cleanBody, customerName);
 
@@ -3517,7 +3562,7 @@ ${teamMembers}
         }
 
         if (file.extension !== 'md') {
-            new Notice('Not a markdown file');
+            new Notice('Not a Markdown file');
             return;
         }
 
@@ -3546,7 +3591,7 @@ ${teamMembers}
         // Check if time entry exists
         const timeEntryId = frontmatter.kantata_time_entry_id;
         if (!timeEntryId) {
-            new Notice('⚠️ No time entry to update. Create one first.');
+            new Notice('⚠️ no time entry to update. Create one first.');
             return;
         }
 
@@ -3564,7 +3609,7 @@ ${teamMembers}
 
         // Analyze note with AI
         void this.updateStatusBar('⏱️ Time: ⏳', 'Updating time entry...');
-        new Notice('🤖 Analyzing note and updating time entry...');
+        new Notice('🤖 analyzing note and updating time entry...');
 
         try {
             // Get available stories/tasks
@@ -3613,12 +3658,12 @@ ${teamMembers}
      */
     async undoLastTimeEntry(): Promise<void> {
         if (!this.lastTimeEntry) {
-            new Notice('❌ No time entry to undo');
+            new Notice('❌ no time entry to undo');
             return;
         }
 
         try {
-            new Notice('🔄 Undoing time entry...');
+            new Notice('🔄 undoing time entry...');
             await this.deleteTimeEntry(this.lastTimeEntry.id);
             new Notice(`✅ Time entry ${this.lastTimeEntry.id} deleted`);
             
@@ -3635,14 +3680,14 @@ ${teamMembers}
     async openManualTimeEntryModal(): Promise<void> {
         const file = this.app.workspace.getActiveFile();
         if (!file) {
-            new Notice('❌ No active file - open a note in a linked folder');
+            new Notice('❌ no active file - open a note in a linked folder');
             return;
         }
 
         // Find linked workspace
         const cacheResult = this.findCacheEntry(file);
         if (!cacheResult) {
-            new Notice('❌ Folder not linked to Kantata workspace');
+            new Notice('❌ folder not linked to Kantata workspace');
             return;
         }
 
@@ -3660,7 +3705,7 @@ ${teamMembers}
             const tasks = await this.getWorkspaceTasks(workspaceId);
             
             if (tasks.length === 0) {
-                new Notice('❌ No tasks found in workspace - create a task in Kantata first');
+                new Notice('❌ no tasks found in workspace - create a task in Kantata first');
                 return;
             }
 
@@ -3691,7 +3736,7 @@ ${teamMembers}
                 (taskId, hours, notes) => {
                     void (async () => {
                         try {
-                            new Notice('⏱️ Creating time entry...');
+                            new Notice('⏱️ creating time entry...');
                             const userId = await this.getCurrentUserId();
                             const today = new Date().toISOString().split('T')[0];
                             
@@ -3730,7 +3775,7 @@ ${teamMembers}
                     // Update callback for edit mode
                     void (async () => {
                         try {
-                            new Notice('⏱️ Updating time entry...');
+                            new Notice('⏱️ updating time entry...');
                             await this.updateTimeEntry(existingEntryId!, { 
                                 time_in_minutes: Math.round(hours * 60),
                                 notes: notes,
@@ -3757,9 +3802,9 @@ ${teamMembers}
                     // Delete callback for edit mode
                     void (async () => {
                         try {
-                            new Notice('🗑️ Deleting time entry...');
+                            new Notice('🗑️ deleting time entry...');
                             await this.deleteTimeEntry(existingEntryId!);
-                            new Notice('✅ Time entry deleted');
+                            new Notice('✅ time entry deleted');
                             
                             // Clear time entry frontmatter (keep note sync status)
                             const activeFile = this.app.workspace.getActiveFile();
@@ -3790,11 +3835,12 @@ ${teamMembers}
     async getWorkspaceTasks(workspaceId: string): Promise<TaskOption[]> {
         const response = await this.apiRequest(`/stories.json?workspace_id=${workspaceId}&per_page=100`);
         // Kantata returns stories as an object keyed by ID, not an array
-        const stories = Object.values(response.stories || {}) as Record<string, unknown>[];
+        const storiesObj = (response.stories || {}) as Record<string, Record<string, unknown>>;
+        const stories = Object.values(storiesObj);
         
-        return stories.map((story: Record<string, unknown>) => ({
-            id: story.id.toString(),
-            title: story.title || `Task ${story.id}`
+        return stories.map((story) => ({
+            id: String(story.id),
+            title: (story.title as string) || `Task ${String(story.id)}`
         }));
     }
 
@@ -3823,27 +3869,27 @@ ${teamMembers}
     openStatusChangeModal(): void {
         const file = this.app.workspace.getActiveFile();
         if (!file) {
-            new Notice('❌ No active file - open a note in a linked folder');
+            new Notice('❌ no active file - open a note in a linked folder');
             return;
         }
 
         const cacheResult = this.findCacheEntry(file);
         if (!cacheResult) {
-            new Notice('❌ Folder not linked to Kantata workspace');
+            new Notice('❌ folder not linked to Kantata workspace');
             return;
         }
 
         const workspaceId = cacheResult.entry.workspaceId;
         const currentStatus = cacheResult.entry.workspaceStatus || 'Unknown';
         
-        new Notice('🎯 Loading statuses...');
+        new Notice('🎯 loading statuses...');
 
         try {
             // Fetch available statuses from Kantata
             const statuses = this.getWorkspaceStatuses();
             
             if (statuses.length === 0) {
-                new Notice('❌ No statuses available');
+                new Notice('❌ no statuses available');
                 return;
             }
 
@@ -3987,11 +4033,11 @@ ${teamMembers}
      */
     async organizeCurrentNote(editor: { getValue(): string; setValue(value: string): void }): Promise<void> {
         console.debug('[KantataSync] organizeCurrentNote called!');
-        new Notice('🔍 Starting organize...');
+        new Notice('🔍 starting organize...');
         
         const file = this.app.workspace.getActiveFile();
         if (!file) {
-            new Notice('❌ No active file');
+            new Notice('❌ no active file');
             return;
         }
 
@@ -4023,7 +4069,7 @@ ${teamMembers}
             if (isEmpty) {
                 // Provide blank template
                 console.debug('[KantataSync] Note is empty, creating blank template');
-                new Notice('📝 Creating blank template...');
+                new Notice('📝 creating blank template...');
                 const now = new Date();
                 const roundedMinutes = Math.round(now.getMinutes() / 30) * 30;
                 now.setMinutes(roundedMinutes);
@@ -4032,7 +4078,7 @@ ${teamMembers}
                 
                 organized = this.getTemplate(customerName, dateStr, timeStr);
             } else {
-                new Notice('🤖 Organizing notes with AI...');
+                new Notice('🤖 organizing notes with AI...');
                 
                 // Save backup before AI processing
                 const backupFolder = file.parent ? `${file.parent.path}/_Backups` : '_Backups';
@@ -4098,10 +4144,10 @@ ${teamMembers}
                     await this.app.fileManager.renameFile(file, newPath);
                     new Notice(`✅ Notes organized! renamed to: ${newName}`);
                 } else {
-                    new Notice('✅ Notes organized!');
+                    new Notice('✅ notes organized!');
                 }
             } else {
-                new Notice('✅ Notes organized!');
+                new Notice('✅ notes organized!');
             }
         } catch (err) { const e = err as Error;
             new Notice(`❌ Failed to organize: ${e.message}`);
@@ -4128,7 +4174,7 @@ class KantataSettingTab extends PluginSettingTab {
         // API Settings
         new Setting(containerEl)
             .setName('Kantata API token')
-            .setDesc('Your Kantata/Mavenlink OAuth token (stored securely)')
+            .setDesc('Your Kantata/Mavenlink OAUTH token (stored securely)')
             .addText(text => {
                 text.setPlaceholder('Enter your token')
                     .setValue(this.plugin.getSecret('kantataToken') || '')
@@ -4223,7 +4269,7 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Allowed statuses')
             .setDesc('Comma-separated list of statuses to include (e.g., active, in progress, not started)')
             .addText(text => text
-                .setPlaceholder('Active, In Progress, Not Started')
+                .setPlaceholder('Active, in progress, not started')
                 .setValue(this.plugin.settings.allowedStatuses.join(', '))
                 .onChange((value) => {
                     this.plugin.settings.allowedStatuses = value
@@ -4364,7 +4410,7 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Archive statuses')
             .setDesc('Manually enter statuses that trigger archiving (comma-separated). Check your Kantata workspace status dropdown for available values.')
             .addText(text => text
-                .setPlaceholder('Closed, Cancelled, Completed, Done')
+                .setPlaceholder('Closed, cancelled, completed, done')
                 .setValue(this.plugin.settings.archiveStatuses.join(', '))
                 .onChange((value) => {
                     this.plugin.settings.archiveStatuses = value
@@ -4404,9 +4450,9 @@ class KantataSettingTab extends PluginSettingTab {
                 .addOption('anthropic', 'Anthropic (Claude)')
                 .addOption('openai', 'OpenAI (GPT)')
                 .addOption('google', 'Google AI (Gemini)')
-                .addOption('openrouter', 'OpenRouter (Many Models)')
-                .addOption('ollama', 'Ollama (Local - Free)')
-                .addOption('manual', 'Manual (No AI)')
+                .addOption('openrouter', 'OpenRouter (many models)')
+                .addOption('ollama', 'Ollama (local - free)')
+                .addOption('manual', 'Manual (no AI)')
                 .setValue(this.plugin.settings.aiProvider)
                 .onChange((value: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'manual') => {
                     this.plugin.settings.aiProvider = value;
@@ -4460,7 +4506,7 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'openai') {
             new Setting(containerEl)
                 .setName('OpenAI API key')
-                .setDesc('Get from platform.openai.com (stored securely)')
+                .setDesc('Get from platform.OpenAI.com (stored securely)')
                 .addText(text => text
                     .setPlaceholder('sk-...')
                     .setValue(this.plugin.getSecret('openaiApiKey') || '')
@@ -4540,14 +4586,14 @@ class KantataSettingTab extends PluginSettingTab {
                     .addOption('google/gemini-2.0-flash-001', 'Gemini 2.0 Flash')
                     .addOption('google/gemini-flash-1.5', 'Gemini 1.5 Flash')
                     // Meta
-                    .addOption('meta-llama/llama-3.3-70b-instruct', 'Llama 3.3 70B')
-                    .addOption('meta-llama/llama-3.1-8b-instruct', 'Llama 3.1 8B (cheap)')
+                    .addOption('meta-llama/llama-3.3-70b-instruct', 'Llama 3.3 70b')
+                    .addOption('meta-llama/llama-3.1-8b-instruct', 'Llama 3.1 8b (cheap)')
                     // Mistral
-                    .addOption('mistralai/mistral-large-2411', 'Mistral Large')
-                    .addOption('mistralai/mistral-small-2503', 'Mistral Small')
+                    .addOption('mistralai/mistral-large-2411', 'Mistral large')
+                    .addOption('mistralai/mistral-small-2503', 'Mistral small')
                     // DeepSeek
-                    .addOption('deepseek/deepseek-chat-v3-0324', 'DeepSeek V3')
-                    .addOption('deepseek/deepseek-r1', 'DeepSeek R1')
+                    .addOption('deepseek/deepseek-chat-v3-0324', 'DeepSeek v3')
+                    .addOption('deepseek/deepseek-r1', 'DeepSeek r1')
                     .setValue(this.plugin.settings.openrouterModel)
                     .onChange((value) => {
                         this.plugin.settings.openrouterModel = value;
@@ -4569,7 +4615,7 @@ class KantataSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Ollama model')
-                .setDesc('Model name (run"ollama list" to see available)')
+                .setDesc('Model name (run "Ollama list" to see available)')
                 .addText(text => text
                     .setPlaceholder('llama3.2')
                     .setValue(this.plugin.settings.ollamaModel)
@@ -4805,7 +4851,7 @@ class KantataSettingTab extends PluginSettingTab {
         renderMenuItems();
 
         // Add separator button
-        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ Add separator', cls: 'kantata-add-separator-btn' });
+        const addSeparatorBtn = containerEl.createEl('button', { text: '➕ add separator', cls: 'kantata-add-separator-btn' });
         addSeparatorBtn.onclick = () => {
             // Generate unique separator ID
             let num = 1;
@@ -4822,7 +4868,7 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Clear workspace cache')
-            .setDesc('⚠️ USE WITH CAUTION: Removes all cached customer → workspace mappings. You will need to re-link folders.')
+            .setDesc('⚠️ use with caution: removes all cached customer → workspace mappings. You will need to re-link folders.')
             .addButton(button => button
                 .setButtonText('Clear cache')
                 .setWarning()
