@@ -692,7 +692,6 @@ export default class KantataSync extends Plugin {
         // Commands
         this.addCommand({
             id: 'sync-current-note',
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             name: 'Sync current note to Kantata',
             editorCallback: (editor, view) => {
                 void this.syncCurrentNote();
@@ -701,7 +700,6 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'open-in-kantata',
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             name: 'Open workspace in Kantata',
             callback: () => {
                 void this.openInKantata();
@@ -726,7 +724,6 @@ export default class KantataSync extends Plugin {
 
         this.addCommand({
             id: 'sync-workspaces',
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             name: 'Sync workspaces from Kantata',
             callback: () => {
                 void this.syncWorkspaces(true);
@@ -883,7 +880,6 @@ export default class KantataSync extends Plugin {
                 openInKantata: () => {
                     if (this.settings.menuShowOpenInKantata) {
                         menu.addItem((item) => {
-                            // eslint-disable-next-line obsidianmd/ui/sentence-case
                             item.setTitle('🔗 open in Kantata')
                                 .onClick(() => {
                                     void this.openInKantata();
@@ -896,7 +892,6 @@ export default class KantataSync extends Plugin {
                 deleteFromKantata: () => {
                     if (this.settings.menuShowDeleteFromKantata && isSynced) {
                         menu.addItem((item) => {
-                            // eslint-disable-next-line obsidianmd/ui/sentence-case
                             item.setTitle('🗑️ delete from Kantata')
                                 .onClick(() => {
                                     void this.deleteFromKantata();
@@ -1043,14 +1038,12 @@ export default class KantataSync extends Plugin {
 
     async syncWorkspaces(showNotice = false): Promise<void> {
         if (!this.getSecret('kantataToken')) {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             if (showNotice) new Notice('❌ no Kantata token configured');
             console.debug('[KantataSync] Sync skipped - no token');
             return;
         }
 
         if (showNotice) {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             new Notice('Syncing workspaces from Kantata...');
             void this.updateStatusBar('📝 Note Sync: ⏳ Syncing...', 'Fetching workspaces from Kantata');
         }
@@ -1513,7 +1506,6 @@ export default class KantataSync extends Plugin {
         }
 
         // Note sync icon
-        // eslint-disable-next-line obsidianmd/ui/sentence-case
         this.ribbonNoteIcon = this.addRibbonIcon('file-up', 'Sync note to Kantata', () => {
             void this.syncCurrentNote();
         });
@@ -3138,7 +3130,6 @@ ${teamMembers}
         const { frontmatter } = this.parseFrontmatter(content);
         
         if (!frontmatter.kantata_post_id) {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             new Notice('❌ this note has not been synced to Kantata');
             return;
         }
@@ -3147,7 +3138,6 @@ ${teamMembers}
         new ConfirmModal(this.app, 'Delete this post from Kantata? This cannot be undone.', () => {
             void (async () => {
                 try {
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     new Notice('🗑️ deleting from Kantata...');
                     await this.deletePost(frontmatter.kantata_post_id);
                     
@@ -3158,7 +3148,6 @@ ${teamMembers}
                         kantata_synced_at: null
                     });
                     
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     new Notice('✅ post deleted from Kantata');
                     
                     // Refresh status bar
@@ -3453,7 +3442,6 @@ ${teamMembers}
 
         this.isSyncing = true;
         void this.updateStatusBar('📝 Note Sync: ⏳', 'Syncing to Kantata...');
-        // eslint-disable-next-line obsidianmd/ui/sentence-case
         new Notice('Syncing to Kantata...');
 
         try {
@@ -3699,7 +3687,6 @@ ${teamMembers}
         // Find linked workspace
         const cacheResult = this.findCacheEntry(file);
         if (!cacheResult) {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             new Notice('❌ folder not linked to Kantata workspace');
             return;
         }
@@ -3718,7 +3705,6 @@ ${teamMembers}
             const tasks = await this.getWorkspaceTasks(workspaceId);
             
             if (tasks.length === 0) {
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 new Notice('❌ no tasks found in workspace - create a task in Kantata first');
                 return;
             }
@@ -3889,7 +3875,6 @@ ${teamMembers}
 
         const cacheResult = this.findCacheEntry(file);
         if (!cacheResult) {
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             new Notice('❌ folder not linked to Kantata workspace');
             return;
         }
@@ -4189,7 +4174,6 @@ class KantataSettingTab extends PluginSettingTab {
         // API Settings
         new Setting(containerEl)
             .setName('Kantata API token')
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setDesc('Your Kantata/Mavenlink OAUTH token (stored securely)')
             .addText(text => {
                 text.setPlaceholder('Enter your token')
@@ -4211,9 +4195,7 @@ class KantataSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setName('Test Kantata connection')
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setDesc('Verify your Kantata token works')
             .addButton(button => button
                 .setButtonText('Test')
@@ -4237,7 +4219,6 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Auto-sync folders on startup')
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setDesc('Automatically create folders for new Kantata projects when Obsidian opens')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoSyncFoldersOnStartup)
@@ -4248,7 +4229,6 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Enable folder polling')
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setDesc('Periodically check for new Kantata workspaces and create folders')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.enablePolling)
@@ -4301,7 +4281,6 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Fetch and populate allowed statuses')
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setDesc('Fetch all statuses from Kantata and populate the allowed list (then remove ones you don\'t want)')
             .addButton(button => button
                 .setButtonText('Fetch & fill')
@@ -4332,7 +4311,6 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Ignore patterns')
             .setDesc('Workspace names matching these patterns will be skipped. One pattern per line. Use * for wildcard. Variable: {status}')
             .addTextArea(text => text
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .setPlaceholder('Test*\nInternal*\n*Template')
                 .setValue(this.plugin.settings.ignorePatterns.join('\n'))
                 .onChange((value) => {
@@ -4418,7 +4396,6 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Archive folder name')
             .setDesc('Folder to move archived projects to (type to search existing folders)')
             .addText(text => {
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 text.setPlaceholder('_Archive')
                     .setValue(this.plugin.settings.archiveFolderName)
                     .onChange((value) => {
@@ -4431,7 +4408,6 @@ class KantataSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Archive statuses')
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setDesc('Manually enter statuses that trigger archiving (comma-separated). Check your Kantata workspace status dropdown for available values.')
             .addText(text => text
                 .setPlaceholder('Closed, cancelled, completed, done')
@@ -4471,11 +4447,8 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('AI provider')
             .setDesc('Choose AI provider for time entry analysis')
             .addDropdown(dropdown => dropdown
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .addOption('anthropic', 'Anthropic (Claude)')
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .addOption('openai', 'OpenAI (GPT)')
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .addOption('google', 'Google AI (Gemini)')
                 .addOption('openrouter', 'OpenRouter (many models)')
                 .addOption('ollama', 'Ollama (local - free)')
@@ -4502,14 +4475,12 @@ class KantataSettingTab extends PluginSettingTab {
                 .setDesc(createFragment(frag => {
                     frag.appendText('Get from ');
                     frag.createEl('a', {
-                        // eslint-disable-next-line obsidianmd/ui/sentence-case
                         text: 'console.anthropic.com',
                         href: 'https://console.anthropic.com/settings/keys'
                     });
                     frag.appendText(' (stored securely)');
                 }))
                 .addText(text => text
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .setPlaceholder('sk-ant-api03-...')
                     .setValue(this.plugin.getSecret('anthropicApiKey') || '')
                     .onChange((value) => {
@@ -4520,15 +4491,10 @@ class KantataSettingTab extends PluginSettingTab {
             new Setting(containerEl)
                 .setName('Claude model')
                 .addDropdown(dropdown => dropdown
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('claude-opus-4-20250514', 'Claude Opus 4.5')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4.5')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('claude-sonnet-4-20250514', 'Claude Sonnet 4')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('claude-3-haiku-20240307', 'Claude 3 Haiku (faster)')
                     .setValue(this.plugin.settings.anthropicModel)
                     .onChange((value) => {
@@ -4542,7 +4508,6 @@ class KantataSettingTab extends PluginSettingTab {
                 .setName('OpenAI API key')
                 .setDesc('Get from platform.OpenAI.com (stored securely)')
                 .addText(text => text
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .setPlaceholder('sk-...')
                     .setValue(this.plugin.getSecret('openaiApiKey') || '')
                     .onChange((value) => {
@@ -4554,11 +4519,8 @@ class KantataSettingTab extends PluginSettingTab {
                 .setName('OpenAI model')
                 .addDropdown(dropdown => dropdown
                     .addOption('gpt-4o', 'GPT-4o (recommended)')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gpt-4o-mini', 'GPT-4o Mini (faster)')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gpt-4-turbo', 'GPT-4 Turbo')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gpt-3.5-turbo', 'GPT-3.5 Turbo (cheapest)')
                     .setValue(this.plugin.settings.openaiModel)
                     .onChange((value) => {
@@ -4582,15 +4544,10 @@ class KantataSettingTab extends PluginSettingTab {
             new Setting(containerEl)
                 .setName('Gemini model')
                 .addDropdown(dropdown => dropdown
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gemini-2.5-pro-preview-06-05', 'Gemini 3 Pro (latest)')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gemini-2.0-flash', 'Gemini 2.0 Flash')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gemini-2.0-flash-lite', 'Gemini 2.0 Flash Lite (fastest)')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gemini-1.5-pro', 'Gemini 1.5 Pro')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('gemini-1.5-flash', 'Gemini 1.5 Flash')
                     .setValue(this.plugin.settings.googleModel)
                     .onChange((value) => {
@@ -4604,7 +4561,6 @@ class KantataSettingTab extends PluginSettingTab {
                 .setName('OpenRouter API key')
                 .setDesc('Get from openrouter.ai/keys (stored securely)')
                 .addText(text => text
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .setPlaceholder('sk-or-v1-...')
                     .setValue(this.plugin.getSecret('openrouterApiKey') || '')
                     .onChange((value) => {
@@ -4614,30 +4570,20 @@ class KantataSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('OpenRouter model')
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .setDesc('Access Claude, GPT, Gemini, Llama, and more with one API key')
                 .addDropdown(dropdown => dropdown
                     // Anthropic
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('anthropic/claude-opus-4', 'Claude Opus 4.5')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('anthropic/claude-sonnet-4', 'Claude Sonnet 4.5')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('anthropic/claude-3.5-sonnet', 'Claude 3.5 Sonnet')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('anthropic/claude-3-haiku', 'Claude 3 Haiku')
                     // OpenAI
                     .addOption('openai/gpt-4o', 'GPT-4o')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('openai/gpt-4o-mini', 'GPT-4o Mini')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('openai/gpt-4-turbo', 'GPT-4 Turbo')
                     // Google
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('google/gemini-2.5-pro-preview', 'Gemini 3 Pro')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('google/gemini-2.0-flash-001', 'Gemini 2.0 Flash')
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .addOption('google/gemini-flash-1.5', 'Gemini 1.5 Flash')
                     // Meta
                     .addOption('meta-llama/llama-3.3-70b-instruct', 'Llama 3.3 70b')
@@ -4658,10 +4604,8 @@ class KantataSettingTab extends PluginSettingTab {
         if (provider === 'ollama') {
             new Setting(containerEl)
                 .setName('Ollama endpoint')
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .setDesc('Local Ollama server URL (no API key needed!)')
                 .addText(text => text
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .setPlaceholder('http://localhost:11434')
                     .setValue(this.plugin.settings.ollamaEndpoint)
                     .onChange((value) => {
@@ -4671,10 +4615,8 @@ class KantataSettingTab extends PluginSettingTab {
 
             new Setting(containerEl)
                 .setName('Ollama model')
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 .setDesc('Model name (run "Ollama list" to see available)')
                 .addText(text => text
-                    // eslint-disable-next-line obsidianmd/ui/sentence-case
                     .setPlaceholder('llama3.2')
                     .setValue(this.plugin.settings.ollamaModel)
                     .onChange((value) => {
@@ -4751,7 +4693,6 @@ class KantataSettingTab extends PluginSettingTab {
             .setName('Project statuses')
             .setDesc('Define statuses by color. Format: color:status1,status2,status3 (one color per line)')
             .addTextArea(text => {
-                // eslint-disable-next-line obsidianmd/ui/sentence-case
                 text.setPlaceholder('gray:Not Started,Pending\ngreen:In Progress\nyellow:On Hold\nred:At Risk\nblue:Completed')
                     .setValue(this.plugin.settings.customStatuses)
                     .onChange((value) => {
