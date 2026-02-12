@@ -842,7 +842,7 @@ export default class KantataSync extends Plugin {
                             });
                         } else {
                             menu.addItem((item) => {
-                                item.setTitle('⏱️ AI: create time entry')
+                            item.setTitle('⏱️ AI: create time entry')
                                     .onClick(() => {
                                         void this.createTimeEntryForCurrentNote();
                                     });
